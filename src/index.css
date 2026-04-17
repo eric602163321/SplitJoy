@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  
+  --color-ios-blue: #007AFF;
+  --color-ios-grey: #8E8E93;
+  --color-ios-bg: #F2F2F7;
+  --color-ios-secondary-bg: #FFFFFF;
+  --color-ios-separator: #C6C6C8;
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-ios-bg)] text-black font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .ios-blur {
+    backdrop-filter: blur(20px);
+    background-color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .ios-card {
+    @apply bg-white rounded-xl overflow-hidden shadow-sm;
+  }
+  
+  .ios-grouped-item {
+    @apply flex items-center justify-between py-3 px-4 bg-white border-b border-gray-100 last:border-none active:bg-gray-50 transition-colors;
+  }
+
+  .ios-btn-primary {
+    @apply w-full bg-[var(--color-ios-blue)] text-white font-semibold py-3.5 rounded-xl transition-all active:opacity-70;
+  }
+}
