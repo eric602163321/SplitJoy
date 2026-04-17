@@ -14,6 +14,10 @@ export const AVATARS = [
   { id: '10', emoji: '👽' },
   { id: '11', emoji: '🤡' },
   { id: '12', emoji: '😶‍🌫️' },
+  { id: '13', emoji: '🥶' },
+  { id: '14', emoji: '😡' },
+  { id: '15', emoji: '🥸' },
+  { id: '16', emoji: '👻' },
 ];
 
 interface AvatarGridProps {
