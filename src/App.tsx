@@ -14,6 +14,7 @@ import { Tab, Group, Member, Expense } from './types';
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('personal');
   const [groups, setGroups] = useState<Group[]>([]);
+  const [personalExpenses, setPersonalExpenses] = useState<Expense[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
 
@@ -48,7 +49,12 @@ export default function App() {
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             className="h-full"
           >
-            {activeTab === 'personal' && <PersonalScreen />}
+            {activeTab === 'personal' && (
+              <PersonalScreen 
+                expenses={personalExpenses} 
+                setExpenses={setPersonalExpenses} 
+              />
+            )}
             {activeTab === 'group' && (
               <GroupScreen 
                 groups={groups}

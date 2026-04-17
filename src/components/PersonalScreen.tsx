@@ -89,8 +89,12 @@ const SwipeableExpenseItem: React.FC<{
   );
 };
 
-export default function PersonalScreen() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+interface PersonalScreenProps {
+  expenses: Expense[];
+  setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+}
+
+export default function PersonalScreen({ expenses, setExpenses }: PersonalScreenProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
