@@ -15,6 +15,7 @@ export interface Expense {
   id: string;
   totalAmount: number;
   description: string;
+  notes?: string;
   date: string;
   category: string;
   payerId: string;

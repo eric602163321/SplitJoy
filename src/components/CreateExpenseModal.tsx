@@ -16,6 +16,7 @@ interface CreateExpenseModalProps {
 export default function CreateExpenseModal({ isOpen, onClose, members, onSave }: CreateExpenseModalProps) {
   const [totalAmount, setTotalAmount] = useState<string>('');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0].id);
   const [payerId, setPayerId] = useState(members[0]?.id || '');
   const [splitType, setSplitType] = useState<SplitType>('equal');
@@ -32,6 +33,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
     if (isOpen) {
       setTotalAmount('');
       setDescription('');
+      setNotes('');
       setCategory(CATEGORIES[0].id);
       setCustomSplits({});
       setSelectedSplitMemberIds(members.map(m => m.id));
@@ -88,6 +90,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
       id: Date.now().toString(),
       totalAmount: parseFloat(totalAmount),
       description,
+      notes,
       category,
       date: new Date().toISOString(),
       payerId,
@@ -152,13 +155,19 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
           <div className="grid grid-cols-1 gap-6">
             <div className="flex flex-col gap-2">
               <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">項目與類別</span>
-              <div className="ios-card">
+              <div className="ios-card flex flex-col">
                 <input 
                   type="text" 
-                  placeholder="項目備註"
+                  placeholder="支出項目 (例如: 午餐)"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="ios-grouped-item w-full outline-none text-[15px]" 
+                  className="ios-grouped-item w-full outline-none text-[15px] border-b border-gray-100" 
+                />
+                <textarea 
+                  placeholder="備註 (選填)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full p-4 outline-none text-[14px] text-gray-500 bg-white min-h-[80px] border-b border-gray-100"
                 />
                 <div className="p-3 grid grid-cols-3 gap-2">
                   {CATEGORIES.map(cat => (
@@ -179,92 +188,96 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
             </div>
           </div>
 
-          {/* Payer Section */}
-          <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">誰先代墊了這筆錢？</span>
-            <div className="ios-card p-3 flex flex-wrap gap-2">
-              {members.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => setPayerId(m.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all",
-                    payerId === m.id 
-                      ? "bg-[var(--color-ios-blue)] text-white shadow-md" 
-                      : "bg-[#F2F2F7] text-slate-500"
-                  )}
-                >
-                  <span className="text-sm">
-                    {AVATARS.find(a => a.id === m.avatar)?.emoji || "👤"}
-                  </span>
-                  <span>{m.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Split Logic */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center px-1">
-              <div className="flex bg-[#F2F2F7] rounded-lg p-1 w-full">
-                <button 
-                  onClick={() => setSplitType('equal')}
-                  className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'equal' ? "bg-white shadow-sm text-black" : "text-slate-400")}
-                >大家平分</button>
-                <button 
-                  onClick={() => setSplitType('custom')}
-                  className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'custom' ? "bg-white shadow-sm text-black" : "text-slate-400")}
-                >自訂比例</button>
+          {/* Payer Section - Only show if multiple members */}
+          {members.length > 1 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">誰先代墊了這筆錢？</span>
+              <div className="ios-card p-3 flex flex-wrap gap-2">
+                {members.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setPayerId(m.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all",
+                      payerId === m.id 
+                        ? "bg-[var(--color-ios-blue)] text-white shadow-md" 
+                        : "bg-[#F2F2F7] text-slate-500"
+                    )}
+                  >
+                    <span className="text-sm">
+                      {AVATARS.find(a => a.id === m.avatar)?.emoji || "👤"}
+                    </span>
+                    <span>{m.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
+          )}
 
-            <div className="ios-card flex flex-col">
-              {members.map(m => {
-                const isSelected = selectedSplitMemberIds.includes(m.id);
-                return (
-                  <div 
-                    key={m.id} 
-                    className={cn(
-                      "ios-grouped-item py-4 cursor-pointer active:bg-gray-50 transition-colors",
-                      !isSelected && "bg-gray-50/30"
-                    )}
-                    onClick={() => toggleSplitMember(m.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-                        isSelected ? "bg-[#4285F4] border-[#4285F4]" : "border-gray-200"
-                      )}>
-                        {isSelected && <Check size={12} className="text-white" strokeWidth={4} />}
-                      </div>
-                      <div className={cn("w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg", !isSelected && "grayscale opacity-50")}>
-                        {AVATARS.find(a => a.id === m.avatar)?.emoji || "😀"}
-                      </div>
-                      <span className={cn("text-[15px] font-semibold", !isSelected && "text-gray-400")}>{m.name}</span>
-                    </div>
-                    <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                      {splitType === 'custom' && (
-                        <input 
-                          type="number"
-                          placeholder="比例"
-                          disabled={!isSelected}
-                          value={customSplits[m.id] || ''}
-                          onChange={(e) => handleCustomSplitChange(m.id, e.target.value)}
-                          className={cn(
-                            "w-16 h-10 bg-gray-50 rounded-lg text-center font-bold text-sm outline-none border border-gray-100 focus:border-blue-300",
-                            !isSelected && "opacity-20"
-                          )}
-                        />
+          {/* Split Logic - Only show if multiple members */}
+          {members.length > 1 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center px-1">
+                <div className="flex bg-[#F2F2F7] rounded-lg p-1 w-full">
+                  <button 
+                    onClick={() => setSplitType('equal')}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'equal' ? "bg-white shadow-sm text-black" : "text-slate-400")}
+                  >大家平分</button>
+                  <button 
+                    onClick={() => setSplitType('custom')}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'custom' ? "bg-white shadow-sm text-black" : "text-slate-400")}
+                  >自訂比例</button>
+                </div>
+              </div>
+
+              <div className="ios-card flex flex-col">
+                {members.map(m => {
+                  const isSelected = selectedSplitMemberIds.includes(m.id);
+                  return (
+                    <div 
+                      key={m.id} 
+                      className={cn(
+                        "ios-grouped-item py-4 cursor-pointer active:bg-gray-50 transition-colors",
+                        !isSelected && "bg-gray-50/30"
                       )}
-                      <span className={cn("text-[15px] font-bold w-20 text-right transition-colors", isSelected ? "text-[var(--color-ios-blue)]" : "text-gray-300")}>
-                        ${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'}
-                      </span>
+                      onClick={() => toggleSplitMember(m.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                          isSelected ? "bg-[#4285F4] border-[#4285F4]" : "border-gray-200"
+                        )}>
+                          {isSelected && <Check size={12} className="text-white" strokeWidth={4} />}
+                        </div>
+                        <div className={cn("w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg", !isSelected && "grayscale opacity-50")}>
+                          {AVATARS.find(a => a.id === m.avatar)?.emoji || "😀"}
+                        </div>
+                        <span className={cn("text-[15px] font-semibold", !isSelected && "text-gray-400")}>{m.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {splitType === 'custom' && (
+                          <input 
+                            type="number"
+                            placeholder="比例"
+                            disabled={!isSelected}
+                            value={customSplits[m.id] || ''}
+                            onChange={(e) => handleCustomSplitChange(m.id, e.target.value)}
+                            className={cn(
+                              "w-16 h-10 bg-gray-50 rounded-lg text-center font-bold text-sm outline-none border border-gray-100 focus:border-blue-300",
+                              !isSelected && "opacity-20"
+                            )}
+                          />
+                        )}
+                        <span className={cn("text-[15px] font-bold w-20 text-right transition-colors", isSelected ? "text-[var(--color-ios-blue)]" : "text-gray-300")}>
+                          ${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="h-4" />
         </div>
