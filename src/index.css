@@ -35,4 +35,15 @@
   .ios-btn-primary {
     @apply w-full bg-[var(--color-ios-blue)] text-white font-semibold py-3.5 rounded-xl transition-all active:opacity-70;
   }
+
+  .ios-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .ios-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .ios-scrollbar::-webkit-scrollbar-thumb {
+    background: #D1D1D6;
+    border-radius: 10px;
+  }
 }

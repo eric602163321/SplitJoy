@@ -124,6 +124,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
           members={group.members} 
           expenses={group.expenses} 
           groupName={group.name} 
+          currentCurrency={group.currency}
         />
       </div>
     );

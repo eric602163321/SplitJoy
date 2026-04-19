@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw } from 'lucide-react';
+import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw, Globe, Coins } from 'lucide-react';
 import { Member, Expense, Debt } from '../types';
-import { CATEGORIES, RETRO_COLORS } from '../constants';
+import { CATEGORIES, RETRO_COLORS, CURRENCIES } from '../constants';
 import { calculateSettlement, cn } from '../lib/utils';
 import { AVATARS } from './AvatarGrid';
+import CurrencyPickerModal from './CurrencyPickerModal';
 
 interface StatsScreenProps {
   members: Member[];
   expenses: Expense[];
   groupName?: string;
+  currentCurrency?: string;
 }
 
 const SwipeableDebtItem: React.FC<{ 
@@ -19,7 +21,11 @@ const SwipeableDebtItem: React.FC<{
   isSettled: boolean; 
   onToggle: () => void;
   index: number;
-}> = ({ debt, members, isSettled, onToggle, index }) => {
+  conversion?: {
+    rate: number;
+    currency: string;
+  };
+}> = ({ debt, members, isSettled, onToggle, index, conversion }) => {
   const x = useMotionValue(0);
   
   // Swipe Left (x < 0) -> Settle
@@ -117,6 +123,14 @@ const SwipeableDebtItem: React.FC<{
             "text-xl font-black transition-colors",
             isSettled ? "text-green-600" : "text-[var(--color-ios-blue)]"
           )}>${debt.amount}</span>
+          {conversion && conversion.rate !== 1 && (
+            <div className="flex flex-col items-end mt-1">
+              <span className="text-[10px] text-slate-400 font-bold">轉換約</span>
+              <span className="text-sm font-bold text-slate-600">
+                {conversion.currency} {(debt.amount * conversion.rate).toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
 
         {isSettled && (
@@ -133,10 +147,17 @@ const SwipeableDebtItem: React.FC<{
   );
 };
 
-export default function StatsScreen({ members, expenses, groupName }: StatsScreenProps) {
+export default function StatsScreen({ members, expenses, groupName, currentCurrency }: StatsScreenProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [settledDebtKeys, setSettledDebtKeys] = useState<Set<string>>(new Set());
+  
+  // Currency conversion state
+  const [targetCurrency, setTargetCurrency] = useState('');
+  const [customTargetCurrency, setCustomTargetCurrency] = useState('');
+  const [exchangeRate, setExchangeRate] = useState('1.0');
+  const [showConverter, setShowConverter] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const toggleSettled = (from: string, to: string) => {
     const key = `${from}-${to}`;
@@ -330,7 +351,98 @@ export default function StatsScreen({ members, expenses, groupName }: StatsScree
 
       {/* Optimized Settlement Section */}
       <section className="flex flex-col gap-3 pb-8">
-        <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider px-1">欠債細節</h2>
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">欠債細節</h2>
+          <button 
+            onClick={() => setShowConverter(!showConverter)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-all",
+              showConverter ? "bg-slate-200 text-slate-700" : "text-[var(--color-ios-blue)] hover:bg-blue-50"
+            )}
+          >
+            <Globe size={12} />
+            <span>匯率轉換</span>
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {showConverter && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden mb-4 px-1"
+            >
+              <div className="ios-card p-4 bg-slate-50 border-none shadow-inner flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">目標幣別</label>
+                  <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => setIsPickerOpen(true)}
+                      className="w-full bg-white flex items-center justify-between py-3 px-4 rounded-xl text-[15px] text-black outline-none border border-slate-100 active:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex flex-col items-start text-left">
+                        <span className="font-bold">
+                          {CURRENCIES.find(c => c.code === targetCurrency)?.name || (targetCurrency ? `常用幣別: ${targetCurrency}` : '點擊選擇約定幣別')}
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-[#8E8E93]">{targetCurrency || "-"}</span>
+                      </div>
+                      <ChevronDown size={18} className="text-[#C7C7CC]" />
+                    </button>
+
+                    <CurrencyPickerModal 
+                      isOpen={isPickerOpen}
+                      onClose={() => setIsPickerOpen(false)}
+                      selectedCode={targetCurrency}
+                      excludeCode={currentCurrency}
+                      onSelect={(code) => {
+                        setTargetCurrency(code);
+                        setCustomTargetCurrency('');
+                      }}
+                      title="選擇目標幣別"
+                    />
+
+                    <input 
+                      type="text" 
+                      placeholder="或手動輸入其它幣別代碼"
+                      value={customTargetCurrency}
+                      onChange={(e) => {
+                        setCustomTargetCurrency(e.target.value.toUpperCase());
+                        if (e.target.value) setTargetCurrency('');
+                      }}
+                      className="w-full bg-white border border-slate-100 py-3 px-4 rounded-xl text-[15px] font-bold placeholder:text-gray-300 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all"
+                    />
+                  </div>
+                </div>
+
+                {(targetCurrency || customTargetCurrency) && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
+                      輸入匯率 (1 {currentCurrency || '原始幣'} = ?)
+                    </span>
+                    <div className="relative flex items-center">
+                      <div className="absolute left-3 text-slate-400">
+                        <Coins size={16} />
+                      </div>
+                      <input 
+                        type="number"
+                        step="0.0001"
+                        value={exchangeRate}
+                        onChange={(e) => setExchangeRate(e.target.value)}
+                        placeholder="請輸入匯率..."
+                        className="w-full bg-white border border-slate-100 py-2.5 pl-10 pr-4 rounded-xl text-[14px] font-bold outline-none focus:ring-1 focus:ring-[#4285F4]"
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-400 italic px-1">
+                      顯示名稱：{customTargetCurrency || targetCurrency}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {settlements.length > 0 ? (
           <div className="flex flex-col gap-3 px-1">
             {settlements.map((debt, i) => (
@@ -341,6 +453,10 @@ export default function StatsScreen({ members, expenses, groupName }: StatsScree
                 isSettled={settledDebtKeys.has(`${debt.from}-${debt.to}`)}
                 onToggle={() => toggleSettled(debt.from, debt.to)}
                 index={i}
+                conversion={(customTargetCurrency || targetCurrency) ? { 
+                  currency: customTargetCurrency || targetCurrency, 
+                  rate: parseFloat(exchangeRate) || 0 
+                } : undefined}
               />
             ))}
           </div>

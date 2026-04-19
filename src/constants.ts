@@ -12,3 +12,13 @@ export const CATEGORIES: Category[] = [
 export const RETRO_COLORS = [
   '#B74C40', '#E2A752', '#4A6E63', '#6B8D9C', '#8A7261', '#A3A8AC'
 ];
+
+export const CURRENCIES = [
+  { code: 'TWD', name: 'NT$ 新台幣' },
+  { code: 'USD', name: '$ 美金' },
+  { code: 'JPY', name: '¥ 日圓' },
+  { code: 'HKD', name: 'HK$ 港幣' },
+  { code: 'EUR', name: '€ 歐元' },
+  { code: 'KRW', name: '₩ 韓圓' },
+  { code: 'THB', name: '฿ 泰銖' },
+];

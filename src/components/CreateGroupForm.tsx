@@ -2,19 +2,13 @@ import React, { useState } from 'react';
 import { ChevronDown, ArrowLeft } from 'lucide-react';
 import { Group } from '../types';
 import { cn } from '../lib/utils';
+import { CURRENCIES } from '../constants';
+import CurrencyPickerModal from './CurrencyPickerModal';
 
 interface CreateGroupFormProps {
   onAddGroup: (group: Group) => void;
   onCancel: () => void;
 }
-
-const CURRENCIES = [
-  { code: 'TWD', name: 'NT$ 新台幣' },
-  { code: 'USD', name: '$ 美金' },
-  { code: 'JPY', name: '¥ 日圓' },
-  { code: 'HKD', name: 'HK$ 港幣' },
-  { code: 'EUR', name: '€ 歐元' },
-];
 
 export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFormProps) {
   const [name, setName] = useState('');
@@ -60,30 +54,25 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
           <label className="text-[14px] font-bold text-[#8E8E93] px-1">預設幣別</label>
           <div className="relative">
             <button 
-              onClick={() => setShowCurrencyPicker(!showCurrencyPicker)}
-              className="w-full bg-[#F2F2F7] flex items-center justify-between py-3 px-4 rounded-2xl text-[15px] text-black outline-none"
+              onClick={() => setShowCurrencyPicker(true)}
+              className="w-full bg-[#F2F2F7] flex items-center justify-between py-3 px-4 rounded-2xl text-[15px] text-black outline-none active:bg-gray-200 transition-colors"
             >
-              <span>{CURRENCIES.find(c => c.code === currency)?.name || currency}</span>
-              <ChevronDown size={18} className={cn("text-[#C7C7CC] transition-transform", showCurrencyPicker && "rotate-180")} />
+              <div className="flex flex-col items-start">
+                <span className="font-bold">{CURRENCIES.find(c => c.code === currency)?.name || currency}</span>
+                <span className="text-[10px] uppercase font-bold text-[#8E8E93]">{currency}</span>
+              </div>
+              <ChevronDown size={18} className="text-[#C7C7CC]" />
             </button>
             
-            {showCurrencyPicker && (
-              <div className="absolute top-full left-0 right-0 z-10 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-                {CURRENCIES.map((c) => (
-                  <button
-                    key={c.code}
-                    onClick={() => {
-                      setCurrency(c.code);
-                      setShowCurrencyPicker(false);
-                      setCustomCurrency('');
-                    }}
-                    className="w-full px-4 py-3 text-left text-[15px] font-medium hover:bg-gray-50 active:bg-gray-100 border-b border-gray-50 last:border-none"
-                  >
-                    {c.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            <CurrencyPickerModal 
+              isOpen={showCurrencyPicker}
+              onClose={() => setShowCurrencyPicker(false)}
+              selectedCode={currency}
+              onSelect={(code) => {
+                setCurrency(code);
+                setCustomCurrency('');
+              }}
+            />
           </div>
 
           <input 
