@@ -34,7 +34,10 @@ export default function GroupScreen({
   const [isCreating, setIsCreating] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [name, setName] = useState('');
-  const [selectedAvatarId, setSelectedAvatarId] = useState('1');
+  const [selectedAvatarId, setSelectedAvatarId] = useState(() => {
+    const randomIndex = Math.floor(Math.random() * AVATARS.length);
+    return AVATARS[randomIndex].id;
+  });
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
 
@@ -46,6 +49,10 @@ export default function GroupScreen({
       avatar: selectedAvatarId,
     });
     setName('');
+    
+    // Pick a random avatar for the next member
+    const randomIndex = Math.floor(Math.random() * AVATARS.length);
+    setSelectedAvatarId(AVATARS[randomIndex].id);
   };
 
   if (selectedGroup) {

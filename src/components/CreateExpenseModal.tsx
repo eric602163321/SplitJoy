@@ -35,7 +35,14 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
       setDescription('');
       setNotes('');
       setCategory(CATEGORIES[0].id);
-      setCustomSplits({});
+      
+      // Initialize custom splits to '1' for all members to default to 1:1 ratio
+      const initialSplits: Record<string, string> = {};
+      members.forEach(m => {
+        initialSplits[m.id] = '1';
+      });
+      setCustomSplits(initialSplits);
+      
       setSelectedSplitMemberIds(members.map(m => m.id));
       if (members.length > 0) {
         setPayerId(members[0].id);
