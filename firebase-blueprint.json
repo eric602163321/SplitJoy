@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile containing personal expenses and global members list.",
+      "type": "object",
+      "properties": {
+        "personalExpenses": {
+          "type": "array",
+          "description": "List of personal expenses."
+        },
+        "members": {
+          "type": "array",
+          "description": "List of global members."
+        }
+      },
+      "required": ["personalExpenses", "members"]
+    },
+    "Group": {
+      "title": "Group",
+      "description": "A group for shared expenses.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "memberIds": { "type": "array" },
+        "members": { "type": "array" },
+        "expenses": { "type": "array" },
+        "currency": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerId", "memberIds", "members", "expenses", "currency"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User specific data."
+    },
+    "/groups/{groupId}": {
+      "schema": "Group",
+      "description": "Group specific data."
+    }
+  }
+}

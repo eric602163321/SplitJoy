@@ -46,6 +46,18 @@ export default function App() {
   const [hasLoadedPersonalFromCloud, setHasLoadedPersonalFromCloud] = useState(false);
   const [hasLoadedGroupsFromCloud, setHasLoadedGroupsFromCloud] = useState(false);
 
+  // Use refs to track current data for migration (avoid stale closure in useEffect)
+  const currentPersonalExpenses = React.useRef(personalExpenses);
+  const currentMembers = React.useRef(members);
+  
+  useEffect(() => {
+    currentPersonalExpenses.current = personalExpenses;
+  }, [personalExpenses]);
+
+  useEffect(() => {
+    currentMembers.current = members;
+  }, [members]);
+
   // Use refs to track initial load across auth changes
   const isFirstGroupsLoad = React.useRef(true);
   const isFirstPersonalLoad = React.useRef(true);
@@ -129,12 +141,15 @@ export default function App() {
           setMembers(data.members);
         } else {
           // Migration: If cloud is empty but local has data, sync it up
-          if (personalExpenses.length > 0 || members.length > 0) {
-            console.log("Migrating local personal data to cloud...");
+          const pExp = currentPersonalExpenses.current;
+          const mems = currentMembers.current;
+          if (pExp.length > 0 || mems.length > 0) {
+            console.log("Migrating local personal data to cloud...", { pExpCount: pExp.length, memsCount: mems.length });
             updateUserData(user.uid, { 
-              personalExpenses, 
-              members 
-            }).catch(err => console.error("Migration error:", err));
+              personalExpenses: pExp, 
+              members: mems 
+            }).then(() => console.log("Migration successful"))
+              .catch(err => console.error("Migration error:", err));
           }
         }
       } else {

@@ -83,13 +83,11 @@ export const syncUserData = (userId: string, callback: (data: { expenses: Expens
   const userRef = doc(db, 'users', userId);
   return onSnapshot(userRef, 
     (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        callback({
-          expenses: data.personalExpenses || [],
-          members: data.members || []
-        });
-      }
+      const data = snapshot.exists() ? snapshot.data() : {};
+      callback({
+        expenses: data.personalExpenses || [],
+        members: data.members || []
+      });
     },
     (error) => {
       console.error("Error syncing user data:", error);
@@ -98,8 +96,15 @@ export const syncUserData = (userId: string, callback: (data: { expenses: Expens
 };
 
 export const updateUserData = async (userId: string, data: { personalExpenses?: Expense[], members?: Member[] }) => {
-  const userRef = doc(db, 'users', userId);
-  await setDoc(userRef, data, { merge: true });
+  try {
+    const userRef = doc(db, 'users', userId);
+    console.log("Updating user data in Firestore for:", userId, Object.keys(data));
+    await setDoc(userRef, data, { merge: true });
+    console.log("User data updated successfully");
+  } catch (error) {
+    console.error("Error updating user data:", error);
+    throw error;
+  }
 };
 
 export const deleteGroup = async (groupId: string) => {
