@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData } from './lib/firebaseUtils';
+import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup } from './lib/firebaseUtils';
 import PersonalScreen from './components/PersonalScreen';
 import GroupScreen from './components/GroupScreen';
 import SettingsScreen from './components/SettingsScreen';
@@ -43,25 +43,67 @@ export default function App() {
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [hasLoadedPersonalFromCloud, setHasLoadedPersonalFromCloud] = useState(false);
+  const [hasLoadedGroupsFromCloud, setHasLoadedGroupsFromCloud] = useState(false);
+
+  // Use refs to track initial load across auth changes
+  const isFirstGroupsLoad = React.useRef(true);
+  const isFirstPersonalLoad = React.useRef(true);
 
   // Firebase Auth Observer
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
+      
+      // Reset flags when user changes
+      setHasLoadedPersonalFromCloud(false);
+      setHasLoadedGroupsFromCloud(false);
+      isFirstGroupsLoad.current = true;
+      isFirstPersonalLoad.current = true;
     });
     return () => unsubscribe();
   }, []);
 
   // Firebase Firestore Sync for Groups
   useEffect(() => {
-    if (user) {
-      const unsubscribe = syncUserGroups(user.uid, (syncedGroups) => {
+    if (!user) return;
+
+    console.log("Subscribing to groups for:", user.uid);
+    const unsubscribe = syncUserGroups(user.uid, (syncedGroups) => {
+      if (isFirstGroupsLoad.current) {
+        isFirstGroupsLoad.current = false;
+        
+        // Strategy: 
+        // 1. If cloud has data, it wins.
+        // 2. If cloud is empty but local HAS data, upload local to cloud (migration).
+        // 3. Otherwise, just accept cloud (which is empty).
+        
+        if (syncedGroups.length > 0) {
+          setGroups(syncedGroups);
+        } else if (groups.length > 0) {
+          // Migration: Upload existing local groups to cloud
+          console.log("Migrating local groups to cloud...");
+          groups.forEach(async (group) => {
+            try {
+              await createGroup(group, user.uid);
+            } catch (err) {
+              console.error("Migration error for group:", group.id, err);
+            }
+          });
+        }
+      } else {
+        // Subsequent updates: Cloud is the source of truth
         setGroups(syncedGroups);
-      });
-      return () => unsubscribe();
-    }
-  }, [user]);
+      }
+      setHasLoadedGroupsFromCloud(true);
+    });
+
+    return () => {
+      console.log("Unsubscribing from groups");
+      unsubscribe();
+    };
+  }, [user?.uid]); // Only re-subscribe if the user UID changes
 
   // Sync groups to local storage
   useEffect(() => {
@@ -70,14 +112,43 @@ export default function App() {
 
   // Firebase Firestore Sync for Personal Data
   useEffect(() => {
-    if (user) {
-      const unsubscribe = syncUserData(user.uid, (data) => {
-        if (data.expenses.length > 0) setPersonalExpenses(data.expenses);
-        if (data.members.length > 0) setMembers(data.members);
-      });
-      return () => unsubscribe();
+    if (!user) {
+      setHasLoadedPersonalFromCloud(false);
+      return;
     }
-  }, [user]);
+
+    console.log("Subscribing to personal data for:", user.uid);
+    const unsubscribe = syncUserData(user.uid, (data) => {
+      if (isFirstPersonalLoad.current) {
+        isFirstPersonalLoad.current = false;
+        
+        const hasCloudData = data.expenses.length > 0 || data.members.length > 0;
+        
+        if (hasCloudData) {
+          setPersonalExpenses(data.expenses);
+          setMembers(data.members);
+        } else {
+          // Migration: If cloud is empty but local has data, sync it up
+          if (personalExpenses.length > 0 || members.length > 0) {
+            console.log("Migrating local personal data to cloud...");
+            updateUserData(user.uid, { 
+              personalExpenses, 
+              members 
+            }).catch(err => console.error("Migration error:", err));
+          }
+        }
+      } else {
+        setPersonalExpenses(data.expenses);
+        setMembers(data.members);
+      }
+      setHasLoadedPersonalFromCloud(true);
+    });
+
+    return () => {
+      console.log("Unsubscribing from personal data");
+      unsubscribe();
+    };
+  }, [user?.uid]); // Only re-subscribe if the user UID changes
 
   const handleLogin = async () => {
     setAuthError(null);
@@ -100,25 +171,36 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
-    setGroups([]);
-    localStorage.removeItem(STORAGE_KEYS.GROUPS);
+    if (window.confirm('確定要登出嗎？登出後將清除此裝置上的資料，確保您的隱私。資料已儲存在雲端。')) {
+      await signOut(auth);
+      // Clear all state
+      setGroups([]);
+      setPersonalExpenses([]);
+      setMembers([]);
+      setHasLoadedPersonalFromCloud(false);
+      setHasLoadedGroupsFromCloud(false);
+      
+      // Clear localStorage
+      localStorage.removeItem(STORAGE_KEYS.GROUPS);
+      localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
+      localStorage.removeItem(STORAGE_KEYS.MEMBERS);
+    }
   };
 
   // Sync personal state to local storage and Firestore
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
-    if (user) {
-      updateUserData(user.uid, { personalExpenses });
+    if (user && hasLoadedPersonalFromCloud) {
+      updateUserData(user.uid, { personalExpenses }).catch(err => console.error("Sync error:", err));
     }
-  }, [personalExpenses, user]);
+  }, [personalExpenses, user, hasLoadedPersonalFromCloud]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
-    if (user) {
-      updateUserData(user.uid, { members });
+    if (user && hasLoadedPersonalFromCloud) {
+      updateUserData(user.uid, { members }).catch(err => console.error("Sync error:", err));
     }
-  }, [members, user]);
+  }, [members, user, hasLoadedPersonalFromCloud]);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
 
@@ -134,19 +216,38 @@ export default function App() {
   };
 
   const handleAddGroup = async (newGroup: Group) => {
+    // Note: We don't manually update local state here because 
+    // the Firestore listener will pick it up and trigger setGroups.
+    // If we do both, we might see flickering or double entries if not careful.
+    // However, for offline support, local update is good.
+    setGroups(prev => [newGroup, ...prev]);
+    
     if (user) {
-      await createGroup(newGroup, user.uid);
-    } else {
-      setGroups(prev => [...prev, newGroup]);
+      try {
+        await createGroup(newGroup, user.uid);
+      } catch (err) {
+        console.error("Failed to create group in Firestore:", err);
+        // If it fails, we should revert local state
+        setGroups(prev => prev.filter(g => g.id !== newGroup.id));
+        alert("新增團體失敗，請檢查網路連線。");
+      }
     }
     setSelectedGroupId(newGroup.id);
   };
 
-  const handleDeleteGroup = (id: string) => {
-    // For now, deletion is handled by setting groups state if not logged in
-    // Real deletion utility needs to be added to firebaseUtils
+  const handleDeleteGroup = async (id: string) => {
+    // Optimistic update: Remove from local state immediately
     setGroups(prev => prev.filter(g => g.id !== id));
     if (selectedGroupId === id) setSelectedGroupId(null);
+
+    if (user) {
+      try {
+        await deleteGroup(id);
+      } catch (err) {
+        console.error("Failed to delete group from Firestore:", err);
+        // Error handling: maybe alert user?
+      }
+    }
   };
 
   return (

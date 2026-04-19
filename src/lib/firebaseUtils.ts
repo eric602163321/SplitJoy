@@ -17,10 +17,15 @@ import { Group, Member, Expense } from '../types';
 // Users collection
 export const syncUserGroups = (userId: string, callback: (groups: Group[]) => void) => {
   const q = query(collection(db, 'groups'), where('memberIds', 'array-contains', userId));
-  return onSnapshot(q, (snapshot) => {
-    const groups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Group));
-    callback(groups);
-  });
+  return onSnapshot(q, 
+    (snapshot) => {
+      const groups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Group));
+      callback(groups);
+    },
+    (error) => {
+      console.error("Error syncing groups:", error);
+    }
+  );
 };
 
 export const createGroup = async (group: Group, userId: string) => {
@@ -76,18 +81,28 @@ export const removeMemberFromGroup = async (groupId: string, memberId: string) =
 // Sync user-specific data (personal expenses and members)
 export const syncUserData = (userId: string, callback: (data: { expenses: Expense[], members: Member[] }) => void) => {
   const userRef = doc(db, 'users', userId);
-  return onSnapshot(userRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const data = snapshot.data();
-      callback({
-        expenses: data.personalExpenses || [],
-        members: data.members || []
-      });
+  return onSnapshot(userRef, 
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        callback({
+          expenses: data.personalExpenses || [],
+          members: data.members || []
+        });
+      }
+    },
+    (error) => {
+      console.error("Error syncing user data:", error);
     }
-  });
+  );
 };
 
 export const updateUserData = async (userId: string, data: { personalExpenses?: Expense[], members?: Member[] }) => {
   const userRef = doc(db, 'users', userId);
   await setDoc(userRef, data, { merge: true });
+};
+
+export const deleteGroup = async (groupId: string) => {
+  const groupRef = doc(db, 'groups', groupId);
+  await deleteDoc(groupRef);
 };
