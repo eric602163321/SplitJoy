@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Users, PieChart as ChartIcon } from 'lucide-react';
+import { User, Users, Settings } from 'lucide-react';
 import { Tab } from '../types';
 
 interface BottomNavProps {
@@ -24,6 +24,14 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
       >
         <Users size={22} strokeWidth={activeTab === 'group' ? 2.5 : 2} />
         <span className="text-[10px] font-bold tracking-tight">分帳</span>
+      </button>
+
+      <button
+        onClick={() => setActiveTab('settings')}
+        className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 ${activeTab === 'settings' ? 'text-[var(--color-ios-blue)] scale-110' : 'text-[var(--color-ios-grey)]'}`}
+      >
+        <Settings size={22} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
+        <span className="text-[10px] font-bold tracking-tight">設置</span>
       </button>
     </nav>
   );

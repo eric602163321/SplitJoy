@@ -32,7 +32,7 @@ export interface Group {
   createdAt: string;
 }
 
-export type Tab = 'personal' | 'group';
+export type Tab = 'personal' | 'group' | 'settings';
 
 export interface Category {
   id: string;
