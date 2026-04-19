@@ -3,20 +3,53 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import PersonalScreen from './components/PersonalScreen';
 import GroupScreen from './components/GroupScreen';
-import StatsScreen from './components/StatsScreen';
 import BottomNav from './components/BottomNav';
 import { Tab, Group, Member, Expense } from './types';
 
+// Storage keys
+const STORAGE_KEYS = {
+  GROUPS: 'splitit_groups',
+  PERSONAL_EXPENSES: 'splitit_personal_expenses',
+  MEMBERS: 'splitit_members',
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('personal');
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [personalExpenses, setPersonalExpenses] = useState<Expense[]>([]);
+  
+  // Initialize state from local storage or empty array
+  const [groups, setGroups] = useState<Group[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.GROUPS);
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [personalExpenses, setPersonalExpenses] = useState<Expense[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.PERSONAL_EXPENSES);
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [members, setMembers] = useState<Member[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
+
+  // Sync state to local storage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+  }, [groups]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
+  }, [personalExpenses]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+  }, [members]);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
 
