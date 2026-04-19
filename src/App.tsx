@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { syncUserGroups, createGroup, updateGroupDetails } from './lib/firebaseUtils';
+import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData } from './lib/firebaseUtils';
 import PersonalScreen from './components/PersonalScreen';
 import GroupScreen from './components/GroupScreen';
 import SettingsScreen from './components/SettingsScreen';
@@ -18,12 +18,16 @@ import { Tab, Group, Member, Expense } from './types';
 const STORAGE_KEYS = {
   PERSONAL_EXPENSES: 'splitit_personal_expenses',
   MEMBERS: 'splitit_members',
+  GROUPS: 'splitit_groups',
 };
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('personal');
   const [user, setUser] = useState<User | null>(null);
-  const [groups, setGroups] = useState<Group[]>([]);
+  const [groups, setGroups] = useState<Group[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.GROUPS);
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   
   // Local storage for personal data
@@ -49,15 +53,29 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Firebase Firestore Sync
+  // Firebase Firestore Sync for Groups
   useEffect(() => {
     if (user) {
       const unsubscribe = syncUserGroups(user.uid, (syncedGroups) => {
         setGroups(syncedGroups);
       });
       return () => unsubscribe();
-    } else {
-      setGroups([]);
+    }
+  }, [user]);
+
+  // Sync groups to local storage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+  }, [groups]);
+
+  // Firebase Firestore Sync for Personal Data
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = syncUserData(user.uid, (data) => {
+        if (data.expenses.length > 0) setPersonalExpenses(data.expenses);
+        if (data.members.length > 0) setMembers(data.members);
+      });
+      return () => unsubscribe();
     }
   }, [user]);
 
@@ -81,16 +99,26 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = async () => {
+    await signOut(auth);
+    setGroups([]);
+    localStorage.removeItem(STORAGE_KEYS.GROUPS);
+  };
 
-  // Sync personal state to local storage
+  // Sync personal state to local storage and Firestore
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
-  }, [personalExpenses]);
+    if (user) {
+      updateUserData(user.uid, { personalExpenses });
+    }
+  }, [personalExpenses, user]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
-  }, [members]);
+    if (user) {
+      updateUserData(user.uid, { members });
+    }
+  }, [members, user]);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
 

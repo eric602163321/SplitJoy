@@ -72,3 +72,22 @@ export const removeMemberFromGroup = async (groupId: string, memberId: string) =
     });
   }
 };
+
+// Sync user-specific data (personal expenses and members)
+export const syncUserData = (userId: string, callback: (data: { expenses: Expense[], members: Member[] }) => void) => {
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(userRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      callback({
+        expenses: data.personalExpenses || [],
+        members: data.members || []
+      });
+    }
+  });
+};
+
+export const updateUserData = async (userId: string, data: { personalExpenses?: Expense[], members?: Member[] }) => {
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, data, { merge: true });
+};
