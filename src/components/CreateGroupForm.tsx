@@ -46,8 +46,8 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   return (
     <motion.div 
       drag="x"
-      dragConstraints={{ left: 0 }}
-      dragElastic={{ left: 0, right: 0.2 }}
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={{ left: 0, right: 0.15 }}
       onDragEnd={(_, info) => {
         // iOS classic: swipe right from left-ish area to go back
         // We check if the drag started in the left 20% of the screen

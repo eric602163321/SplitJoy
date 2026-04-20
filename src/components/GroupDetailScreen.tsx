@@ -111,8 +111,8 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
     return (
       <motion.div 
         drag="x"
-        dragConstraints={{ left: 0 }}
-        dragElastic={{ left: 0, right: 0.2 }}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0, right: 0.15 }}
         onDragEnd={(_, info) => {
           const startX = info.point.x - info.offset.x;
           if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
