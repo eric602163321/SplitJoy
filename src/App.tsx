@@ -45,6 +45,10 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [hasLoadedPersonalFromCloud, setHasLoadedPersonalFromCloud] = useState(false);
   const [hasLoadedGroupsFromCloud, setHasLoadedGroupsFromCloud] = useState(false);
+  
+  const isFirstGroupsLoad = React.useRef(true);
+  const isFirstPersonalLoad = React.useRef(true);
+  const isLoggingOut = React.useRef(false);
 
   // Use refs to track current data for migration (avoid stale closure in useEffect)
   const currentPersonalExpenses = React.useRef(personalExpenses);
@@ -57,10 +61,6 @@ export default function App() {
   useEffect(() => {
     currentMembers.current = members;
   }, [members]);
-
-  // Use refs to track initial load across auth changes
-  const isFirstGroupsLoad = React.useRef(true);
-  const isFirstPersonalLoad = React.useRef(true);
 
   // Firebase Auth Observer
   useEffect(() => {
