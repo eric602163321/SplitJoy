@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ArrowLeft } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Group } from '../types';
 import { cn } from '../lib/utils';
 import { CURRENCIES } from '../constants';
@@ -43,7 +44,20 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <motion.div 
+      drag="x"
+      dragConstraints={{ left: 0 }}
+      dragElastic={{ left: 0, right: 0.2 }}
+      onDragEnd={(_, info) => {
+        // iOS classic: swipe right from left-ish area to go back
+        // We check if the drag started in the left 20% of the screen
+        const startX = info.point.x - info.offset.x;
+        if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+          onCancel();
+        }
+      }}
+      className="flex flex-col gap-6 min-h-screen bg-transparent"
+    >
       <div className="flex items-center gap-2 px-1">
         <button onClick={onCancel} className="text-[#4285F4]">
           <ArrowLeft size={24} />
@@ -116,6 +130,6 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
           </button>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -109,7 +109,18 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
 
   if (currentView === 'settlement') {
     return (
-      <div className="flex flex-col gap-2">
+      <motion.div 
+        drag="x"
+        dragConstraints={{ left: 0 }}
+        dragElastic={{ left: 0, right: 0.2 }}
+        onDragEnd={(_, info) => {
+          const startX = info.point.x - info.offset.x;
+          if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+            setCurrentView('details');
+          }
+        }}
+        className="flex flex-col gap-2 min-h-screen bg-transparent"
+      >
         <header className="px-1 pt-8 flex items-center gap-4">
           <button 
             onClick={() => setCurrentView('details')} 
@@ -126,12 +137,23 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
           groupName={group.name} 
           currentCurrency={group.currency}
         />
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <motion.div 
+      drag="x"
+      dragConstraints={{ left: 0 }}
+      dragElastic={{ left: 0, right: 0.2 }}
+      onDragEnd={(_, info) => {
+        const startX = info.point.x - info.offset.x;
+        if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+          onBack();
+        }
+      }}
+      className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent"
+    >
       <header className="px-1 pt-8 flex items-center gap-4">
         <button onClick={onBack} className="text-[#8E8E93]">
           <ArrowLeft size={28} strokeWidth={2.5} />
@@ -311,6 +333,6 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         members={group.members}
         onSave={handleAddExpense}
       />
-    </div>
+    </motion.div>
   );
 }
