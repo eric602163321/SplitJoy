@@ -63,6 +63,10 @@ export default function App() {
     currentMembers.current = members;
   }, [members]);
 
+  useEffect(() => {
+    currentGroups.current = groups;
+  }, [groups]);
+
   // Firebase Auth Observer
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -193,21 +197,23 @@ export default function App() {
       isLoggingOut.current = true;
       try {
         await signOut(auth);
-        // Clear all state
+        
+        // Reset states
         setGroups([]);
         setPersonalExpenses([]);
         setMembers([]);
         setHasLoadedPersonalFromCloud(false);
         setHasLoadedGroupsFromCloud(false);
-        isFirstGroupsLoad.current = true;
-        isFirstPersonalLoad.current = true;
         
         // Clear localStorage
         localStorage.removeItem(STORAGE_KEYS.GROUPS);
         localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
         localStorage.removeItem(STORAGE_KEYS.MEMBERS);
       } finally {
-        isLoggingOut.current = false;
+        // Extended guard period to ensure all effects settle
+        setTimeout(() => {
+          isLoggingOut.current = false;
+        }, 1500);
       }
     }
   };
@@ -216,7 +222,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
     if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
-      // DONT sync empty state if we haven't confirmed cloud is empty or if it's the very first cycle
       if (personalExpenses.length === 0 && (isFirstPersonalLoad.current || !hasLoadedPersonalFromCloud)) {
         return;
       }
