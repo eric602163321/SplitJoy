@@ -1,45 +1,63 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
-      "description": "User profile containing personal expenses and global members list.",
-      "type": "object",
-      "properties": {
-        "personalExpenses": {
-          "type": "array",
-          "description": "List of personal expenses."
-        },
-        "members": {
-          "type": "array",
-          "description": "List of global members."
-        }
-      },
-      "required": ["personalExpenses", "members"]
-    },
-    "Group": {
-      "title": "Group",
-      "description": "A group for shared expenses.",
+    "Member": {
+      "title": "Member",
+      "description": "A participant in personal or group bookkeeping",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "ownerId": { "type": "string" },
-        "memberIds": { "type": "array" },
-        "members": { "type": "array" },
-        "expenses": { "type": "array" },
-        "currency": { "type": "string" }
+        "avatar": { "type": "string" }
       },
-      "required": ["id", "name", "ownerId", "memberIds", "members", "expenses", "currency"]
+      "required": ["id", "name"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "An individual expense entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "payerId": { "type": "string" },
+        "category": { "type": "string" },
+        "splitDetails": { "type": "object" }
+      },
+      "required": ["id", "description", "amount", "date", "payerId"]
+    },
+    "User": {
+      "title": "User Data",
+      "description": "Personal data for a user",
+      "type": "object",
+      "properties": {
+        "personalExpenses": { "type": "array" },
+        "members": { "type": "array" }
+      }
+    },
+    "Group": {
+      "title": "Group",
+      "description": "A group for shared expenses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "memberIds": { "type": "array" },
+        "ownerId": { "type": "string" },
+        "expenses": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerId", "memberIds"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
+    "users/{userId}": {
       "schema": "User",
-      "description": "User specific data."
+      "description": "User's individual data"
     },
-    "/groups/{groupId}": {
+    "groups/{groupId}": {
       "schema": "Group",
-      "description": "Group specific data."
+      "description": "Shared group data"
     }
   }
 }
