@@ -44,9 +44,14 @@ export default function GroupScreen({
   useEffect(() => {
     if (isAddingMember) {
       // Small delay to allow AnimatePresence height animation to start
-      setTimeout(() => {
-        memberInputRef.current?.focus();
-      }, 300);
+      // On iOS, focus and keyboard popup are strict. 
+      // 500ms delay helps ensure the element is interactive and layout is stable.
+      const timer = setTimeout(() => {
+        if (memberInputRef.current) {
+          memberInputRef.current.focus();
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [isAddingMember]);
 
@@ -124,6 +129,7 @@ export default function GroupScreen({
                     <input 
                       ref={memberInputRef}
                       type="text" 
+                      autoFocus
                       placeholder="輸入名字"
                       value={name}
                       onChange={(e) => setName(e.target.value)}

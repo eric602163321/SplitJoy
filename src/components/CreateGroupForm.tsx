@@ -18,7 +18,14 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    nameInputRef.current?.focus();
+    // On iOS, focus and keyboard popup are strict. 
+    // 500ms delay helps ensure the element is interactive and layout is stable.
+    const timer = setTimeout(() => {
+      if (nameInputRef.current) {
+        nameInputRef.current.focus();
+      }
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleCreate = () => {
