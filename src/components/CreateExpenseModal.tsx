@@ -39,9 +39,13 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
       setCategory(CATEGORIES[0].id);
       
       // Auto-focus amount field after modal animation
-      setTimeout(() => {
-        amountRef.current?.focus();
-      }, 300);
+      // On iOS, focus and keyboard popup are strict. 
+      // 500ms delay helps ensure the element is interactive.
+      const timer = setTimeout(() => {
+        if (amountRef.current) {
+          amountRef.current.focus();
+        }
+      }, 500);
 
       // Initialize custom splits to '1' for all members to default to 1:1 ratio
       const initialSplits: Record<string, string> = {};
@@ -54,8 +58,17 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
       if (members.length > 0) {
         setPayerId(members[0].id);
       }
+
+      return () => clearTimeout(timer);
     }
   }, [isOpen, members]);
+
+  const handleAmountChange = (val: string) => {
+    // Allow empty string, numbers, and one decimal point
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setTotalAmount(val);
+    }
+  };
 
   const toggleSplitMember = (memberId: string) => {
     setSelectedSplitMemberIds(prev =>
@@ -168,11 +181,13 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
               <span className="text-2xl font-bold mr-2 text-slate-400">$</span>
               <input 
                 ref={amountRef}
-                type="number" 
+                type="text" 
                 inputMode="decimal"
+                pattern="[0-9]*"
+                autoFocus
                 placeholder="0"
                 value={totalAmount}
-                onChange={(e) => setTotalAmount(e.target.value)}
+                onChange={(e) => handleAmountChange(e.target.value)}
                 className="w-full text-2xl font-bold bg-transparent border-none outline-none"
               />
             </div>
