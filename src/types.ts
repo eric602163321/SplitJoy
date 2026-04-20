@@ -30,6 +30,7 @@ export interface Group {
   expenses: Expense[];
   currency: string;
   createdAt: string;
+  ownerId?: string;
 }
 
 export type Tab = 'personal' | 'group' | 'settings';

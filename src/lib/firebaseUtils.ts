@@ -40,10 +40,22 @@ export const createGroup = async (group: Group, userId: string) => {
 
 export const updateGroupDetails = async (groupId: string, data: Partial<Group>) => {
   const groupRef = doc(db, 'groups', groupId);
+  const docSnap = await getDoc(groupRef);
+  
+  if (!docSnap.exists()) return;
+  const currentData = docSnap.data();
+  const ownerId = currentData.ownerId;
+
   const updateData: any = { ...data };
   if (data.members) {
-    updateData.memberIds = Array.from(new Set(data.members.map(m => m.id)));
+    // Crucial: Always include ownerId in memberIds so they don't lose sync access
+    const ids = data.members.map(m => m.id);
+    if (ownerId && !ids.includes(ownerId)) {
+      ids.push(ownerId);
+    }
+    updateData.memberIds = Array.from(new Set(ids));
   }
+  
   await updateDoc(groupRef, updateData);
 };
 
