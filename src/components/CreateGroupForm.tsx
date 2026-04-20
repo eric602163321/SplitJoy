@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ArrowLeft } from 'lucide-react';
 import { Group } from '../types';
 import { cn } from '../lib/utils';
@@ -15,6 +15,11 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   const [currency, setCurrency] = useState('TWD');
   const [customCurrency, setCustomCurrency] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameInputRef.current?.focus();
+  }, []);
 
   const handleCreate = () => {
     if (!name.trim()) return;
@@ -42,6 +47,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
       <div className="ios-card p-6 flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <input 
+            ref={nameInputRef}
             type="text" 
             placeholder="輸入團體名稱（如：眠月線登山團）"
             value={name}

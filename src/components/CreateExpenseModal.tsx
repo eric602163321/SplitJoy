@@ -23,6 +23,8 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
   const [selectedSplitMemberIds, setSelectedSplitMemberIds] = useState<string[]>([]);
 
+  const amountRef = React.useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (members.length > 0 && !payerId) {
       setPayerId(members[0].id);
@@ -36,6 +38,11 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
       setNotes('');
       setCategory(CATEGORIES[0].id);
       
+      // Auto-focus amount field after modal animation
+      setTimeout(() => {
+        amountRef.current?.focus();
+      }, 300);
+
       // Initialize custom splits to '1' for all members to default to 1:1 ratio
       const initialSplits: Record<string, string> = {};
       members.forEach(m => {
@@ -149,7 +156,9 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
             <div className="ios-card px-4 py-2 flex items-center">
               <span className="text-2xl font-bold mr-2 text-slate-400">$</span>
               <input 
+                ref={amountRef}
                 type="number" 
+                inputMode="decimal"
                 placeholder="0"
                 value={totalAmount}
                 onChange={(e) => setTotalAmount(e.target.value)}
