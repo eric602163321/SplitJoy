@@ -83,6 +83,7 @@ export default function App() {
 
     console.log("Subscribing to groups for:", user.uid);
     const unsubscribe = syncUserGroups(user.uid, (syncedGroups) => {
+      console.log(`[Cloud -> Local] 同步成功：從雲端下載了 ${syncedGroups.length} 個團體`);
       if (isFirstGroupsLoad.current) {
         isFirstGroupsLoad.current = false;
         
@@ -131,6 +132,7 @@ export default function App() {
 
     console.log("Subscribing to personal data for:", user.uid);
     const unsubscribe = syncUserData(user.uid, (data) => {
+      console.log(`[Cloud -> Local] 同步成功：從雲端下載了 ${data.expenses.length} 筆個人支出與 ${data.members.length} 位成員`);
       if (isFirstPersonalLoad.current) {
         isFirstPersonalLoad.current = false;
         
@@ -224,27 +226,30 @@ export default function App() {
 
   const handleUpdateGroup = async (updatedGroup: Group) => {
     if (user) {
-      await updateGroupDetails(updatedGroup.id, updatedGroup);
+      try {
+        await updateGroupDetails(updatedGroup.id, updatedGroup);
+      } catch (err) {
+        console.error("Failed to update group in Firestore:", err);
+        // We don't rollback local state here for now to avoid jumpiness, 
+        // but we should ideally notify the user.
+      }
     } else {
       setGroups(prev => prev.map(g => (g.id === updatedGroup.id ? updatedGroup : g)));
     }
   };
 
   const handleAddGroup = async (newGroup: Group) => {
-    // Note: We don't manually update local state here because 
-    // the Firestore listener will pick it up and trigger setGroups.
-    // If we do both, we might see flickering or double entries if not careful.
-    // However, for offline support, local update is good.
+    console.log("Adding new group:", newGroup);
     setGroups(prev => [newGroup, ...prev]);
     
     if (user) {
       try {
+        console.log("Creating group in Firestore for user:", user.uid);
         await createGroup(newGroup, user.uid);
       } catch (err) {
-        console.error("Failed to create group in Firestore:", err);
-        // If it fails, we should revert local state
+        console.error("Detailed error creating group:", err);
         setGroups(prev => prev.filter(g => g.id !== newGroup.id));
-        alert("新增團體失敗，請檢查網路連線。");
+        alert("新增團體失敗，請檢查網路連線或稍後再試。");
       }
     }
     setSelectedGroupId(newGroup.id);
