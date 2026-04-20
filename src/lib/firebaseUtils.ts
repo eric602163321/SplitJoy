@@ -30,16 +30,21 @@ export const syncUserGroups = (userId: string, callback: (groups: Group[]) => vo
 
 export const createGroup = async (group: Group, userId: string) => {
   const groupRef = doc(db, 'groups', group.id);
+  const memberIds = Array.from(new Set([userId, ...group.members.map(m => m.id)]));
   await setDoc(groupRef, {
     ...group,
     ownerId: userId,
-    memberIds: [userId] // Initially just the owner
+    memberIds: memberIds
   });
 };
 
 export const updateGroupDetails = async (groupId: string, data: Partial<Group>) => {
   const groupRef = doc(db, 'groups', groupId);
-  await updateDoc(groupRef, data);
+  const updateData: any = { ...data };
+  if (data.members) {
+    updateData.memberIds = Array.from(new Set(data.members.map(m => m.id)));
+  }
+  await updateDoc(groupRef, updateData);
 };
 
 export const addExpenseToGroup = async (groupId: string, expense: Expense) => {
