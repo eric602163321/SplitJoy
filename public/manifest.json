@@ -1,0 +1,21 @@
+{
+  "name": "分帳趣 (SplitJoy)",
+  "short_name": "分帳趣",
+  "description": "簡單、快速、流暢的 iOS 風格分帳工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4285F4",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1621416894569-0f39ed31d247?q=80&w=192&h=192&auto=format&fit=crop",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1621416894569-0f39ed31d247?q=80&w=512&h=512&auto=format&fit=crop",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

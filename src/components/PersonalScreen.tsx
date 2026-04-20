@@ -139,9 +139,18 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   if (showAnalysis) {
     return (
       <motion.div 
+        drag="x"
+        dragConstraints={{ left: 0 }}
+        dragElastic={{ left: 0, right: 0.2 }}
+        onDragEnd={(_, info) => {
+          const startX = info.point.x - info.offset.x;
+          if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+            setShowAnalysis(false);
+          }
+        }}
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="flex flex-col gap-6 pb-24"
+        className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent"
       >
         <header className="px-1 pt-8 flex items-center gap-4">
           <button 
