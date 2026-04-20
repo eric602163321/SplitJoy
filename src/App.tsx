@@ -189,27 +189,36 @@ export default function App() {
 
   const handleLogout = async () => {
     if (window.confirm('確定要登出嗎？登出後將清除此裝置上的資料，確保您的隱私。資料已儲存在雲端。')) {
-      await signOut(auth);
-      // Clear all state
-      setGroups([]);
-      setPersonalExpenses([]);
-      setMembers([]);
-      setHasLoadedPersonalFromCloud(false);
-      setHasLoadedGroupsFromCloud(false);
-      
-      // Clear localStorage
-      localStorage.removeItem(STORAGE_KEYS.GROUPS);
-      localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
-      localStorage.removeItem(STORAGE_KEYS.MEMBERS);
+      isLoggingOut.current = true;
+      try {
+        await signOut(auth);
+        // Clear all state
+        setGroups([]);
+        setPersonalExpenses([]);
+        setMembers([]);
+        setHasLoadedPersonalFromCloud(false);
+        setHasLoadedGroupsFromCloud(false);
+        isFirstGroupsLoad.current = true;
+        isFirstPersonalLoad.current = true;
+        
+        // Clear localStorage
+        localStorage.removeItem(STORAGE_KEYS.GROUPS);
+        localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
+        localStorage.removeItem(STORAGE_KEYS.MEMBERS);
+      } finally {
+        isLoggingOut.current = false;
+      }
     }
   };
 
   // Sync personal state to local storage and Firestore
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
-    if (user && hasLoadedPersonalFromCloud) {
-      // Small delay or check to ensure we're not syncing an intermediate empty state
-      if (personalExpenses.length === 0 && isFirstPersonalLoad.current) return;
+    if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
+      // DONT sync empty state if we haven't confirmed cloud is empty or if it's the very first cycle
+      if (personalExpenses.length === 0 && (isFirstPersonalLoad.current || !hasLoadedPersonalFromCloud)) {
+        return;
+      }
       console.log("[Local -> Cloud] 同步個人支出...", personalExpenses.length);
       updateUserData(user.uid, { personalExpenses }).catch(err => console.error("Sync error:", err));
     }
@@ -217,8 +226,10 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
-    if (user && hasLoadedPersonalFromCloud) {
-      if (members.length === 0 && isFirstPersonalLoad.current) return;
+    if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
+      if (members.length === 0 && (isFirstPersonalLoad.current || !hasLoadedPersonalFromCloud)) {
+        return;
+      }
       console.log("[Local -> Cloud] 同步成員名單...", members.length);
       updateUserData(user.uid, { members }).catch(err => console.error("Sync error:", err));
     }
