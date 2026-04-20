@@ -53,6 +53,7 @@ export default function App() {
   // Use refs to track current data for migration (avoid stale closure in useEffect)
   const currentPersonalExpenses = React.useRef(personalExpenses);
   const currentMembers = React.useRef(members);
+  const currentGroups = React.useRef(groups);
   
   useEffect(() => {
     currentPersonalExpenses.current = personalExpenses;
