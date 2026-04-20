@@ -78,12 +78,6 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   const [currentView, setCurrentView] = useState<'details' | 'settlement'>('details');
 
   const toggleMemberInGroup = (member: Member) => {
-    // SECURITY: Prevent the creator/owner from being removed from the group
-    if (member.id === group.ownerId) {
-      console.warn("Cannot remove the group creator from member list.");
-      return;
-    }
-
     const isAlreadyInGroup = group.members.some(m => m.id === member.id);
     let updatedMembers;
     
