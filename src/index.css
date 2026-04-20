@@ -9,11 +9,16 @@
   --color-ios-bg: #F2F2F7;
   --color-ios-secondary-bg: #FFFFFF;
   --color-ios-separator: #C6C6C8;
+
+  --app-font-scale: 1;
 }
 
 @layer base {
+  html {
+    font-size: calc(16px * var(--app-font-scale));
+  }
   body {
-    @apply bg-[var(--color-ios-bg)] text-black font-sans antialiased;
+    @apply bg-[var(--color-ios-bg)] text-black font-sans antialiased text-base;
     -webkit-tap-highlight-color: transparent;
   }
 }

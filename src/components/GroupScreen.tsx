@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
@@ -38,6 +38,17 @@ export default function GroupScreen({
     const randomIndex = Math.floor(Math.random() * AVATARS.length);
     return AVATARS[randomIndex].id;
   });
+
+  const memberInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isAddingMember) {
+      // Small delay to allow AnimatePresence height animation to start
+      setTimeout(() => {
+        memberInputRef.current?.focus();
+      }, 300);
+    }
+  }, [isAddingMember]);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
 
@@ -111,6 +122,7 @@ export default function GroupScreen({
                   <AvatarGrid selectedId={selectedAvatarId} onSelect={setSelectedAvatarId} />
                   <div className="flex flex-col gap-3">
                     <input 
+                      ref={memberInputRef}
                       type="text" 
                       placeholder="輸入名字"
                       value={name}

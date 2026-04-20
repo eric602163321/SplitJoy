@@ -17,10 +17,14 @@ interface DataContextType {
   isAuthLoading: boolean;
   isInitialSyncComplete: boolean;
   authError: string | null;
+  bgTexture: string;
+  fontSize: 'small' | 'medium' | 'large';
   
   // Actions
   handleLogin: () => Promise<void>;
   handleLogout: () => Promise<void>;
+  setBgTexture: (texture: string) => void;
+  setFontSize: (size: 'small' | 'medium' | 'large') => void;
   addPersonalExpense: (expense: Expense) => void;
   setPersonalExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
   addMember: (member: Member) => void;
@@ -51,6 +55,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [members, setMembers] = useState<Member[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
     return saved ? JSON.parse(saved) : [];
+  });
+  const [bgTexture, setBgTextureState] = useState(() => {
+    return localStorage.getItem('splitit_bg_texture') || 'default';
+  });
+  const [fontSize, setFontSizeState] = useState<'small' | 'medium' | 'large'>(() => {
+    return (localStorage.getItem('splitit_font_size') as 'small' | 'medium' | 'large') || 'small';
   });
 
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -156,6 +166,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [members, user, hasLoadedPersonalFromCloud]);
 
+  const setBgTexture = (texture: string) => {
+    setBgTextureState(texture);
+    localStorage.setItem('splitit_bg_texture', texture);
+    updateTheme(texture, fontSize);
+  };
+
+  const setFontSize = (size: 'small' | 'medium' | 'large') => {
+    setFontSizeState(size);
+    localStorage.setItem('splitit_font_size', size);
+    updateTheme(bgTexture, size);
+  };
+
+  const updateTheme = (texture: string, size: 'small' | 'medium' | 'large') => {
+    const root = document.documentElement;
+    
+    // Background Texture
+    switch (texture) {
+      case 'soft-blue':
+        root.style.setProperty('--color-ios-bg', '#F5F9FF');
+        break;
+      case 'soft-pink':
+        root.style.setProperty('--color-ios-bg', '#FFF5F8');
+        break;
+      case 'soft-green':
+        root.style.setProperty('--color-ios-bg', '#F5FFF9');
+        break;
+      case 'warm':
+        root.style.setProperty('--color-ios-bg', '#FFF9F5');
+        break;
+      case 'dark-glass':
+        root.style.setProperty('--color-ios-bg', '#121212');
+        root.style.setProperty('--text-color', '#FFFFFF');
+        break;
+      default:
+        root.style.setProperty('--color-ios-bg', '#F2F2F7');
+    }
+
+    // Font Size
+    switch (size) {
+      case 'medium':
+        root.style.setProperty('--app-font-scale', '1.1');
+        break;
+      case 'large':
+        root.style.setProperty('--app-font-scale', '1.25');
+        break;
+      default: // small
+        root.style.setProperty('--app-font-scale', '1.0');
+    }
+  };
+
+  useEffect(() => {
+    updateTheme(bgTexture, fontSize);
+  }, []);
+
   const handleLogin = async () => {
     setAuthError(null);
     try {
@@ -218,7 +282,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user, groups, personalExpenses, members, isAuthLoading,
       isInitialSyncComplete: hasLoadedPersonalFromCloud && hasLoadedGroupsFromCloud,
       authError, handleLogin, handleLogout, addPersonalExpense, setPersonalExpenses,
-      addMember, removeMember, addGroup, updateGroup, removeGroup
+      addMember, removeMember, addGroup, updateGroup, removeGroup,
+      bgTexture, setBgTexture, fontSize, setFontSize
     }}>
       {children}
     </DataContext.Provider>

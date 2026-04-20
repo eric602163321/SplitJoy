@@ -3,10 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { User as UserType } from 'firebase/auth';
-import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X } from 'lucide-react';
+import { useData } from '../contexts/DataContext';
+import { cn } from '../lib/utils';
+
+const THEME_OPTIONS = [
+  { id: 'default', label: '系統默認', color: '#F2F2F7' },
+  { id: 'soft-blue', label: '清爽藍', color: '#F5F9FF' },
+  { id: 'soft-pink', label: '戀愛粉', color: '#FFF5F8' },
+  { id: 'soft-green', label: '森林綠', color: '#F5FFF9' },
+  { id: 'warm', label: '溫暖橘', color: '#FFF9F5' },
+];
 
 interface SettingsScreenProps {
   user: UserType | null;
@@ -16,8 +26,140 @@ interface SettingsScreenProps {
 }
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout, error }) => {
+  const { bgTexture, setBgTexture, fontSize, setFontSize } = useData();
+  const [activeSheet, setActiveSheet] = useState<'theme' | 'font' | null>(null);
+
+  const currentTheme = THEME_OPTIONS.find(t => t.id === bgTexture) || THEME_OPTIONS[0];
+  
+  const fontSizeLabels: Record<string, string> = {
+    small: '小',
+    medium: '中',
+    large: '大'
+  };
+
+  const handleFontChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseInt(e.target.value);
+    if (val === 0) setFontSize('small');
+    else if (val === 1) setFontSize('medium');
+    else setFontSize('large');
+  };
+
+  const getFontValue = () => {
+    if (fontSize === 'small') return 0;
+    if (fontSize === 'medium') return 1;
+    return 2;
+  };
+
+  const renderSheet = () => (
+    <AnimatePresence>
+      {activeSheet && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setActiveSheet(null)}
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          />
+          
+          <motion.div 
+            drag="y"
+            dragConstraints={{ top: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 100 || info.velocity.y > 500) {
+                setActiveSheet(null);
+              }
+            }}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="relative bg-[var(--color-ios-bg)] w-full max-w-lg rounded-t-[24px] shadow-2xl overflow-hidden pb-10"
+          >
+            {/* Drag Handle */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-300 rounded-full z-[210]" />
+
+            <div className="p-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] bg-white/80 backdrop-blur-md">
+              <span className="text-[17px] font-bold ml-2">
+                {activeSheet === 'theme' ? '選擇背景顏色' : '調整字體大小'}
+              </span>
+              <button 
+                onClick={() => setActiveSheet(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:scale-90 transition-all"
+              >
+                <X size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {activeSheet === 'theme' ? (
+                <div className="grid grid-cols-5 gap-3">
+                  {THEME_OPTIONS.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => {
+                        setBgTexture(theme.id);
+                        setTimeout(() => setActiveSheet(null), 200);
+                      }}
+                      className={cn(
+                        "relative flex flex-col items-center gap-2 p-1 transition-all",
+                      )}
+                    >
+                      <div 
+                        className={cn(
+                          "w-12 h-12 rounded-full shadow-sm flex items-center justify-center border-2 transition-all",
+                          bgTexture === theme.id ? "border-[var(--color-ios-blue)] scale-110" : "border-white"
+                        )}
+                        style={{ backgroundColor: theme.color }}
+                      >
+                        {bgTexture === theme.id && <Check size={20} className="text-[var(--color-ios-blue)]" />}
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-bold transition-colors",
+                        bgTexture === theme.id ? "text-[var(--color-ios-blue)]" : "text-gray-400"
+                      )}>
+                        {theme.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-6 py-4">
+                  <div className="flex justify-between items-end px-2">
+                    <span className="text-[14px] font-bold text-gray-400">A</span>
+                    <span className="text-[18px] font-bold text-gray-400 font-serif">A</span>
+                    <span className="text-[24px] font-bold text-gray-400">A</span>
+                  </div>
+                  <div className="relative px-2">
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="2" 
+                      step="1"
+                      value={getFontValue()}
+                      onChange={handleFontChange}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[var(--color-ios-blue)]"
+                    />
+                    <div className="absolute top-1/2 left-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                    <div className="absolute top-1/2 right-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                  </div>
+                  <p className="text-center text-[13px] font-bold text-[var(--color-ios-grey)] mt-2 italic">
+                    當前大小：{fontSizeLabels[fontSize]}
+                  </p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
-    <div className="flex flex-col gap-6 select-none">
+    <div className="flex flex-col gap-6 select-none relative">
+      {renderSheet()}
       <div className="flex flex-col gap-1 px-2 pt-4">
         <h1 className="text-3xl font-black text-gray-900 tracking-tight">設置</h1>
         <p className="text-sm font-bold text-gray-400">管理您的帳戶與應用偏好</p>
@@ -92,6 +234,44 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 <span>登出帳戶</span>
               </button>
             )}
+          </div>
+        </section>
+
+        {/* Appearance Section */}
+        <section className="flex flex-col gap-2">
+          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">個人化</h2>
+          <div className="ios-card divide-y divide-[var(--color-ios-separator)]">
+            <button 
+              onClick={() => setActiveSheet('theme')}
+              className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[var(--color-ios-blue)]">
+                  <Palette size={18} />
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="font-bold text-gray-900">背景顏色</span>
+                  <span className="text-[11px] text-gray-400 font-bold">{currentTheme.label}</span>
+                </div>
+              </div>
+              <ChevronRight size={18} className="text-gray-300" />
+            </button>
+
+            <button 
+              onClick={() => setActiveSheet('font')}
+              className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-orange-500">
+                  <Type size={18} />
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="font-bold text-gray-900">字體大小</span>
+                  <span className="text-[11px] text-gray-400 font-bold">{fontSizeLabels[fontSize]}</span>
+                </div>
+              </div>
+              <ChevronRight size={18} className="text-gray-300" />
+            </button>
           </div>
         </section>
 
