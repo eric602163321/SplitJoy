@@ -30,6 +30,7 @@ export default function App() {
   });
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   
+  // Local storage for personal data
   const [personalExpenses, setPersonalExpenses] = useState<Expense[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.PERSONAL_EXPENSES);
     return saved ? JSON.parse(saved) : [];
@@ -49,7 +50,7 @@ export default function App() {
   const isFirstPersonalLoad = React.useRef(true);
   const isLoggingOut = React.useRef(false);
 
-  // Use refs to track current state for effects
+  // Use refs to track current data for migration (avoid stale closure in useEffect)
   const currentPersonalExpenses = React.useRef(personalExpenses);
   const currentMembers = React.useRef(members);
   const currentGroups = React.useRef(groups);
@@ -66,62 +67,13 @@ export default function App() {
     currentGroups.current = groups;
   }, [groups]);
 
-  // Migration logic: Force upload from LocalStorage to Cloud upon login
-  const migrateLocalDataToCloud = async (userId: string) => {
-    console.log("[Migration] Starting data migration...");
-    
-    // 1. Group Migration
-    const localGroupsRaw = localStorage.getItem(STORAGE_KEYS.GROUPS);
-    if (localGroupsRaw) {
-      try {
-        const localGroups: Group[] = JSON.parse(localGroupsRaw);
-        if (localGroups.length > 0) {
-          console.log(`[Migration] Found ${localGroups.length} groups to migrate.`);
-          await Promise.all(localGroups.map(g => createGroup(g, userId)));
-        }
-      } catch (e) {
-        console.error("Migration error (groups):", e);
-      }
-    }
-
-    // 2. Personal Data Migration
-    const localExpRaw = localStorage.getItem(STORAGE_KEYS.PERSONAL_EXPENSES);
-    const localMemsRaw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    const updates: any = {};
-    
-    try {
-      if (localExpRaw) {
-        const pExp = JSON.parse(localExpRaw);
-        if (pExp.length > 0) updates.personalExpenses = pExp;
-      }
-      if (localMemsRaw) {
-        const mems = JSON.parse(localMemsRaw);
-        if (mems.length > 0) updates.members = mems;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        console.log("[Migration] Migrating personal data...", Object.keys(updates));
-        await updateUserData(userId, updates);
-      }
-    } catch (e) {
-      console.error("Migration error (personal):", e);
-    }
-    
-    console.log("[Migration] Migration completed successfully.");
-  };
-
   // Firebase Auth Observer
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      // Logic: If user just logged in and we weren't already logged in
-      if (currentUser && !user) {
-        console.log("Member logged in. Identity:", currentUser.email);
-        await migrateLocalDataToCloud(currentUser.uid);
-      }
-      
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
       
+      // Reset flags when user changes
       if (!currentUser) {
         setHasLoadedPersonalFromCloud(false);
         setHasLoadedGroupsFromCloud(false);
@@ -130,40 +82,77 @@ export default function App() {
       }
     });
     return () => unsubscribe();
-  }, [user]);
+  }, []);
 
   // Firebase Firestore Sync for Groups
   useEffect(() => {
     if (!user) return;
 
+    console.log("Subscribing to groups for:", user.uid);
     const unsubscribe = syncUserGroups(user.uid, (syncedGroups) => {
-      console.log(`[Cloud -> Local] 同步成功：下載 ${syncedGroups.length} 個團體`);
-      
-      // If logging out, ignore cloud snapshot
-      if (isLoggingOut.current) return;
-
-      setGroups(syncedGroups);
+      console.log(`[Cloud -> Local] 同步成功：從雲端下載了 ${syncedGroups.length} 個團體`);
+      if (isFirstGroupsLoad.current) {
+        isFirstGroupsLoad.current = false;
+        
+        if (syncedGroups.length > 0) {
+          setGroups(syncedGroups);
+        } else if (currentGroups.current.length > 0) {
+          // Migration: Upload existing local groups to cloud
+          console.log("Migrating local groups to cloud...");
+          currentGroups.current.forEach(async (group) => {
+            try {
+              await createGroup(group, user.uid);
+            } catch (err) {
+              console.error("Migration error for group:", group.id, err);
+            }
+          });
+        }
+      } else {
+        setGroups(syncedGroups);
+      }
       setHasLoadedGroupsFromCloud(true);
-      isFirstGroupsLoad.current = false;
     });
 
     return () => unsubscribe();
   }, [user?.uid]);
 
+  // Sync groups to local storage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+  }, [groups]);
+
   // Firebase Firestore Sync for Personal Data
   useEffect(() => {
     if (!user) return;
 
+    console.log("Subscribing to personal data for:", user.uid);
     const unsubscribe = syncUserData(user.uid, (data) => {
-      console.log(`[Cloud -> Local] 同步成功：下載 ${data.expenses.length} 筆支出`);
-      
-      // If logging out, ignore cloud snapshot
-      if (isLoggingOut.current) return;
-
-      setPersonalExpenses(data.expenses);
-      setMembers(data.members);
+      console.log(`[Cloud -> Local] 同步成功：下載了 ${data.expenses.length} 筆支出`);
+      if (isFirstPersonalLoad.current) {
+        isFirstPersonalLoad.current = false;
+        
+        const hasCloudData = data.expenses.length > 0 || data.members.length > 0;
+        
+        if (hasCloudData) {
+          setPersonalExpenses(data.expenses);
+          setMembers(data.members);
+        } else {
+          const pExp = currentPersonalExpenses.current;
+          const mems = currentMembers.current;
+          if (pExp.length > 0 || mems.length > 0) {
+            console.log("Migrating local personal data to cloud...", { pExpCount: pExp.length, memsCount: mems.length });
+            updateUserData(user.uid, { 
+              personalExpenses: pExp, 
+              members: mems 
+            }).then(() => console.log("Migration successful"))
+              .catch(err => console.error("Migration error:", err));
+          }
+        }
+      } else {
+        setPersonalExpenses(data.expenses);
+        setMembers(data.members);
+      }
       setHasLoadedPersonalFromCloud(true);
-      isFirstPersonalLoad.current = false;
     });
 
     return () => unsubscribe();
@@ -176,7 +165,16 @@ export default function App() {
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error("Login failed:", error);
-      setAuthError(error.message || '登入失敗，請稍後再試。');
+      if (error.code === 'auth/unauthorized-domain') {
+        const hostname = window.location.hostname;
+        setAuthError(`目前的網域未被授權。請前往 Firebase 控制台將「${hostname}」加入 Authentication 的「授權網域」清單中。`);
+      } else if (error.code === 'auth/configuration-not-found') {
+        setAuthError('Firebase 驗證未啟用。請前往 Firebase 控制台啟動 Authentication 並啟用 Google 登入方式。');
+      } else if (error.code === 'auth/operation-not-allowed') {
+        setAuthError('Google 登入尚未在 Firebase 控制台啟用。');
+      } else {
+        setAuthError(error.message || '登入失敗，請稍後再試。');
+      }
     }
   };
 
@@ -185,20 +183,22 @@ export default function App() {
       isLoggingOut.current = true;
       try {
         await signOut(auth);
-        
         setGroups([]);
         setPersonalExpenses([]);
         setMembers([]);
         setHasLoadedPersonalFromCloud(false);
         setHasLoadedGroupsFromCloud(false);
+        isFirstGroupsLoad.current = true;
+        isFirstPersonalLoad.current = true;
         
         localStorage.removeItem(STORAGE_KEYS.GROUPS);
         localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
         localStorage.removeItem(STORAGE_KEYS.MEMBERS);
       } finally {
+        // Delay resetting the lock to prevent last-second syncs
         setTimeout(() => {
           isLoggingOut.current = false;
-        }, 2000);
+        }, 1000);
       }
     }
   };
@@ -220,8 +220,8 @@ export default function App() {
     }
   }, [members, user, hasLoadedPersonalFromCloud]);
 
-  // Other component logic...
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
+
   const addMember = (m: Member) => setMembers(prev => [...prev, m]);
   const removeMember = (id: string) => setMembers(prev => prev.filter(m => m.id !== id));
 
@@ -243,7 +243,7 @@ export default function App() {
       try {
         await createGroup(newGroup, user.uid);
       } catch (err) {
-        console.error("Error creating group:", err);
+        console.error("Detailed error creating group:", err);
         setGroups(prev => prev.filter(g => g.id !== newGroup.id));
         alert("新增團體失敗。");
       }
@@ -258,7 +258,7 @@ export default function App() {
       try {
         await deleteGroup(id);
       } catch (err) {
-        console.error("Failed to delete group:", err);
+        console.error("Failed to delete group from Firestore:", err);
       }
     }
   };
