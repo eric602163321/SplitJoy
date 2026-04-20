@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ArrowLeft } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, useDragControls } from 'motion/react';
 import { Group } from '../types';
 import { cn } from '../lib/utils';
 import { CURRENCIES } from '../constants';
@@ -17,6 +17,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   const [customCurrency, setCustomCurrency] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const dragControls = useDragControls();
 
   useEffect(() => {
     // On iOS, focus and keyboard popup are strict. 
@@ -46,13 +47,19 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   return (
     <motion.div 
       drag="x"
+      dragControls={dragControls}
+      dragListener={false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={{ left: 0, right: 0.15 }}
+      onPointerDown={(e) => {
+        // Start drag ONLY if within 40px of the edge
+        if (e.clientX < 40) {
+          dragControls.start(e);
+        }
+      }}
       onDragEnd={(_, info) => {
         // iOS classic: swipe right from left-ish area to go back
-        // We check if the drag started in the left 20% of the screen
-        const startX = info.point.x - info.offset.x;
-        if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+        if (info.offset.x > 80 && info.velocity.x > 300) {
           onCancel();
         }
       }}

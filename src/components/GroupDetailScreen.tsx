@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls } from 'motion/react';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Expense, Group } from '../types';
 import CreateExpenseModal from './CreateExpenseModal';
@@ -76,6 +76,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManagingMembers, setIsManagingMembers] = useState(false);
   const [currentView, setCurrentView] = useState<'details' | 'settlement'>('details');
+  const dragControls = useDragControls();
 
   const toggleMemberInGroup = (member: Member) => {
     const isAlreadyInGroup = group.members.some(m => m.id === member.id);
@@ -111,11 +112,17 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
     return (
       <motion.div 
         drag="x"
+        dragControls={dragControls}
+        dragListener={false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={{ left: 0, right: 0.15 }}
+        onPointerDown={(e) => {
+          if (e.clientX < 40) {
+            dragControls.start(e);
+          }
+        }}
         onDragEnd={(_, info) => {
-          const startX = info.point.x - info.offset.x;
-          if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+          if (info.offset.x > 80 && info.velocity.x > 300) {
             setCurrentView('details');
           }
         }}
@@ -144,11 +151,17 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   return (
     <motion.div 
       drag="x"
-      dragConstraints={{ left: 0 }}
-      dragElastic={{ left: 0, right: 0.2 }}
+      dragControls={dragControls}
+      dragListener={false}
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={{ left: 0, right: 0.15 }}
+      onPointerDown={(e) => {
+        if (e.clientX < 40) {
+          dragControls.start(e);
+        }
+      }}
       onDragEnd={(_, info) => {
-        const startX = info.point.x - info.offset.x;
-        if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+        if (info.offset.x > 80 && info.velocity.x > 300) {
           onBack();
         }
       }}

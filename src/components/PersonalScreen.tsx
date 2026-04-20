@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Sparkles, ChevronRight, BarChart3, ArrowLeft, TrendingUp, ChevronDown, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate, useDragControls } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Expense, Member } from '../types';
 import { CATEGORIES, RETRO_COLORS } from '../constants';
@@ -98,6 +98,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
+  const dragControls = useDragControls();
 
   const total = expenses.reduce((sum, exp) => sum + exp.totalAmount, 0);
 
@@ -140,11 +141,17 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     return (
       <motion.div 
         drag="x"
-        dragConstraints={{ left: 0 }}
-        dragElastic={{ left: 0, right: 0.2 }}
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0, right: 0.15 }}
+        onPointerDown={(e) => {
+          if (e.clientX < 40) {
+            dragControls.start(e);
+          }
+        }}
         onDragEnd={(_, info) => {
-          const startX = info.point.x - info.offset.x;
-          if (startX < window.innerWidth * 0.2 && info.offset.x > 80 && info.velocity.x > 300) {
+          if (info.offset.x > 80 && info.velocity.x > 300) {
             setShowAnalysis(false);
           }
         }}
