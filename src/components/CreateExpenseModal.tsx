@@ -12,9 +12,10 @@ interface CreateExpenseModalProps {
   onClose: () => void;
   members: Member[];
   onSave: (expense: Expense) => void;
+  initialExpense?: Expense;
 }
 
-export default function CreateExpenseModal({ isOpen, onClose, members, onSave }: CreateExpenseModalProps) {
+export default function CreateExpenseModal({ isOpen, onClose, members, onSave, initialExpense }: CreateExpenseModalProps) {
   const { t, i18n } = useTranslation();
   const [totalAmount, setTotalAmount] = useState<string>('');
   const [description, setDescription] = useState('');
@@ -35,10 +36,41 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
 
   useEffect(() => {
     if (isOpen) {
-      setTotalAmount('');
-      setDescription('');
-      setNotes('');
-      setCategory(CATEGORIES[0].id);
+      if (initialExpense) {
+        setTotalAmount(initialExpense.totalAmount.toString());
+        setDescription(initialExpense.description);
+        setNotes(initialExpense.notes || '');
+        setCategory(initialExpense.category);
+        setPayerId(initialExpense.payerId);
+        setSplitType(initialExpense.splitType);
+        
+        const activeIds = initialExpense.splits.filter(s => s.amount > 0).map(s => s.memberId);
+        setSelectedSplitMemberIds(activeIds);
+        
+        // For custom splits, we try to reconstruct ratio/weight if it's stored, 
+        // but since we only store result amounts, we fallback to showing amounts as weights for simplicity
+        const initialWeights: Record<string, string> = {};
+        members.forEach(m => {
+          const split = initialExpense.splits.find(s => s.memberId === m.id);
+          initialWeights[m.id] = split ? split.amount.toString() : '1';
+        });
+        setCustomSplits(initialWeights);
+      } else {
+        setTotalAmount('');
+        setDescription('');
+        setNotes('');
+        setCategory(CATEGORIES[0].id);
+        setSplitType('equal');
+        setSelectedSplitMemberIds(members.map(m => m.id));
+        if (members.length > 0) {
+          setPayerId(members[0].id);
+        }
+        const initialSplits: Record<string, string> = {};
+        members.forEach(m => {
+          initialSplits[m.id] = '1';
+        });
+        setCustomSplits(initialSplits);
+      }
       
       const timer = setTimeout(() => {
         if (amountRef.current) {
@@ -46,20 +78,9 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
         }
       }, 500);
 
-      const initialSplits: Record<string, string> = {};
-      members.forEach(m => {
-        initialSplits[m.id] = '1';
-      });
-      setCustomSplits(initialSplits);
-      
-      setSelectedSplitMemberIds(members.map(m => m.id));
-      if (members.length > 0) {
-        setPayerId(members[0].id);
-      }
-
       return () => clearTimeout(timer);
     }
-  }, [isOpen, members]);
+  }, [isOpen, members, initialExpense]);
 
   const handleAmountChange = (val: string) => {
     if (val === '' || /^\d*\.?\d*$/.test(val)) {
@@ -111,12 +132,12 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
   const handleSave = () => {
     if (!isValid) return;
     const newExpense: Expense = {
-      id: Date.now().toString(),
+      id: initialExpense?.id || Date.now().toString(),
       totalAmount: parseFloat(totalAmount),
       description,
       notes,
       category,
-      date: new Date().toISOString(),
+      date: initialExpense?.date || new Date().toISOString(),
       payerId,
       splitType,
       splits

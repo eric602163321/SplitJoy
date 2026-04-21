@@ -13,6 +13,8 @@ interface GroupListProps {
 
 export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStartCreate }: GroupListProps) {
   const { t, i18n } = useTranslation();
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between px-1">
@@ -77,7 +79,7 @@ export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStar
                     </div>
                   </button>
                   <button 
-                    onClick={() => onDeleteGroup(group.id)}
+                    onClick={() => setDeletingGroupId(group.id)}
                     className="p-2 text-[#C7C7CC] hover:text-red-500 transition-colors"
                   >
                     <Trash2 size={20} />
@@ -86,6 +88,51 @@ export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStar
               </motion.div>
             ))}
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* iOS Style Action Sheet for Deletion */}
+      <AnimatePresence>
+        {deletingGroupId && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDeletingGroupId(null)}
+              className="fixed inset-0 bg-black/40 z-[100] backdrop-blur-[2px]"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-[101] p-4 pb-12 flex flex-col gap-3 items-center"
+            >
+              <div className="w-full max-w-sm bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 text-center border-b border-gray-200">
+                  <p className="text-[13px] text-[#8E8E93] font-medium leading-tight">
+                    {t('delete_group_confirm')}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => {
+                    onDeleteGroup(deletingGroupId);
+                    setDeletingGroupId(null);
+                  }}
+                  className="w-full p-4 text-[#FF3B30] text-[20px] font-medium active:bg-gray-100 transition-colors"
+                >
+                  {t('delete')}
+                </button>
+              </div>
+              <button 
+                onClick={() => setDeletingGroupId(null)}
+                className="w-full max-w-sm bg-white p-4 text-[#007AFF] text-[20px] font-bold rounded-2xl shadow-lg active:bg-gray-100 transition-colors"
+              >
+                {t('cancel')}
+              </button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

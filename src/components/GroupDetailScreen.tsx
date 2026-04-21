@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls } from 'motion/react';
+import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator, Pencil } from 'lucide-react';
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Expense, Group } from '../types';
@@ -16,26 +16,62 @@ interface GroupDetailScreenProps {
   allMembers: Member[];
 }
 
-const SwipeableExpenseItem: React.FC<{ exp: Expense; group: Group; onDelete: (id: string) => void }> = ({ exp, group, onDelete }) => {
+const SwipeableExpenseItem: React.FC<{ 
+  exp: Expense; 
+  group: Group; 
+  onDelete: (id: string) => void;
+  onEdit: (exp: Expense) => void;
+}> = ({ exp, group, onDelete, onEdit }) => {
   const { t, i18n } = useTranslation();
   const x = useMotionValue(0);
-  // Transform x position to background opacity and button scale
-  const opacity = useTransform(x, [0, 60], [0, 1]);
-  const scale = useTransform(x, [0, 60], [0.5, 1]);
+  
+  // Right swipe (Delete)
+  const deleteOpacity = useTransform(x, [0, 60], [0, 1]);
+  const deleteScale = useTransform(x, [0, 60], [0.5, 1]);
+  
+  // Left swipe (Edit)
+  const editOpacity = useTransform(x, [0, -60], [0, 1]);
+  const editScale = useTransform(x, [0, -60], [0.5, 1]);
+
+  const handleDelete = () => {
+    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
+      onDelete(exp.id);
+    });
+  };
+
+  const handleEdit = () => {
+    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
+      onEdit(exp);
+    });
+  };
 
   return (
     <div className="relative overflow-hidden bg-white border-b border-gray-50 last:border-none">
       {/* Delete Background (Visible when swiping right) */}
       <motion.div 
-        style={{ opacity }}
-        className="absolute inset-y-0 left-0 w-20 bg-red-500 flex items-center justify-center"
+        style={{ opacity: deleteOpacity }}
+        className="absolute inset-y-0 left-0 w-20 bg-red-500 flex items-center justify-center p-4"
       >
         <motion.button 
-          style={{ scale }}
-          onClick={() => onDelete(exp.id)}
+          style={{ scale: deleteScale }}
+          onClick={handleDelete}
           className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
         >
-          <X size={24} strokeWidth={3} />
+          <X size={20} strokeWidth={3} />
+        </motion.button>
+      </motion.div>
+
+      {/* Edit Background (Left Swipe) */}
+      <motion.div 
+        style={{ opacity: editOpacity }}
+        className="absolute inset-y-0 right-0 w-20 bg-[#4285F4] flex items-center justify-center p-4"
+      >
+        <motion.button 
+          style={{ scale: editScale }}
+          onClick={handleEdit}
+          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
+        >
+          <Pencil size={20} strokeWidth={2.5} />
         </motion.button>
       </motion.div>
 
@@ -43,8 +79,17 @@ const SwipeableExpenseItem: React.FC<{ exp: Expense; group: Group; onDelete: (id
       <motion.div
         style={{ x }}
         drag="x"
-        dragConstraints={{ left: 0, right: 80 }}
+        dragConstraints={{ left: -80, right: 80 }}
         dragElastic={0.1}
+        onDragEnd={(_, info) => {
+          if (info.offset.x > 40 || info.velocity.x > 300) {
+            animate(x, 80, { type: 'spring', bounce: 0.3, duration: 0.4 });
+          } else if (info.offset.x < -40 || info.velocity.x < -300) {
+            animate(x, -80, { type: 'spring', bounce: 0.3, duration: 0.4 });
+          } else {
+            animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 });
+          }
+        }}
         className="bg-white relative z-10"
       >
         <div className="ios-grouped-item cursor-grab active:cursor-grabbing border-none">
@@ -77,6 +122,7 @@ const SwipeableExpenseItem: React.FC<{ exp: Expense; group: Group; onDelete: (id
 export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMembers }: GroupDetailScreenProps) {
   const { t, i18n } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isManagingMembers, setIsManagingMembers] = useState(false);
   const [currentView, setCurrentView] = useState<'details' | 'settlement'>('details');
   const dragControls = useDragControls();
@@ -107,18 +153,34 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
     });
   };
 
-  const handleAddExpense = (e: Expense) => {
-    onUpdateGroup({
-      ...group,
-      expenses: [...group.expenses, e]
-    });
+  const handleSaveExpense = (e: Expense) => {
+    if (editingExpense) {
+      onUpdateGroup({
+        ...group,
+        expenses: group.expenses.map(old => old.id === editingExpense.id ? e : old)
+      });
+      setEditingExpense(null);
+    } else {
+      onUpdateGroup({
+        ...group,
+        expenses: [...group.expenses, e]
+      });
+    }
+    setIsModalOpen(false);
+  };
+
+  const handleEditExpense = (exp: Expense) => {
+    setEditingExpense(exp);
+    setIsModalOpen(true);
   };
 
   const handleDeleteExpense = (id: string) => {
-    onUpdateGroup({
-      ...group,
-      expenses: group.expenses.filter(e => e.id !== id)
-    });
+    if (window.confirm(t('delete_group_confirm'))) { // Re-using existing delete confirmation key
+      onUpdateGroup({
+        ...group,
+        expenses: group.expenses.filter(e => e.id !== id)
+      });
+    }
   };
 
   if (currentView === 'settlement') {
@@ -352,7 +414,8 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                       key={exp.id} 
                       exp={exp} 
                       group={group} 
-                      onDelete={handleDeleteExpense} 
+                      onDelete={handleDeleteExpense}
+                      onEdit={handleEditExpense}
                     />
                   ))}
                 </div>
@@ -364,9 +427,13 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
 
       <CreateExpenseModal 
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingExpense(null);
+        }}
         members={group.members}
-        onSave={handleAddExpense}
+        onSave={handleSaveExpense}
+        initialExpense={editingExpense || undefined}
       />
     </motion.div>
   );

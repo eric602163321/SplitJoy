@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Sparkles, ChevronRight, BarChart3, ArrowLeft, TrendingUp, ChevronDown, Trash2 } from 'lucide-react';
+import { Plus, Sparkles, ChevronRight, BarChart3, ArrowLeft, TrendingUp, ChevronDown, Trash2, Pencil } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -12,16 +12,31 @@ import { cn } from '../lib/utils';
 const SwipeableExpenseItem: React.FC<{
   exp: Expense;
   onDelete: (id: string) => void;
-}> = ({ exp, onDelete }) => {
+  onEdit?: (exp: Expense) => void;
+}> = ({ exp, onDelete, onEdit }) => {
   const { i18n } = useTranslation();
   const x = useMotionValue(0);
+  
+  // Right swipe (Delete)
   const deleteOpacity = useTransform(x, [0, 60], [0, 1]);
   const deleteScale = useTransform(x, [0, 60], [0.5, 1]);
+  
+  // Left swipe (Edit)
+  const editOpacity = useTransform(x, [0, -60], [0, 1]);
+  const editScale = useTransform(x, [0, -60], [0.5, 1]);
 
   const handleDelete = () => {
     animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
       onDelete(exp.id);
     });
+  };
+
+  const handleEdit = () => {
+    if (onEdit) {
+      animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
+        onEdit(exp);
+      });
+    }
   };
 
   return (
@@ -42,7 +57,21 @@ const SwipeableExpenseItem: React.FC<{
           onClick={handleDelete}
           className="w-full h-full flex items-center justify-center text-white"
         >
-          <Trash2 size={24} strokeWidth={2.5} />
+          <Trash2 size={20} strokeWidth={2.5} />
+        </motion.button>
+      </motion.div>
+
+      {/* Edit Background (Left Swipe) */}
+      <motion.div 
+        style={{ opacity: editOpacity }}
+        className="absolute inset-y-0 right-0 w-20 bg-[#4285F4] flex items-center justify-center p-4"
+      >
+        <motion.button 
+          style={{ scale: editScale }}
+          onClick={handleEdit}
+          className="w-full h-full flex items-center justify-center text-white"
+        >
+          <Pencil size={20} strokeWidth={2.5} />
         </motion.button>
       </motion.div>
 
@@ -50,8 +79,17 @@ const SwipeableExpenseItem: React.FC<{
       <motion.div
         style={{ x }}
         drag="x"
-        dragConstraints={{ left: 0, right: 80 }}
+        dragConstraints={{ left: -80, right: 80 }}
         dragElastic={0.1}
+        onDragEnd={(_, info) => {
+          if (info.offset.x > 40 || info.velocity.x > 300) {
+            animate(x, 80, { type: 'spring', bounce: 0.3, duration: 0.4 });
+          } else if (info.offset.x < -40 || info.velocity.x < -300) {
+            animate(x, -80, { type: 'spring', bounce: 0.3, duration: 0.4 });
+          } else {
+            animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 });
+          }
+        }}
         className="bg-white p-4 flex items-center justify-between relative z-10 active:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
@@ -95,9 +133,13 @@ interface PersonalScreenProps {
 export default function PersonalScreen({ expenses, setExpenses }: PersonalScreenProps) {
   const { t, i18n } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [sortType, setSortType] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  
   const containerRef1 = useRef<HTMLDivElement>(null);
   const containerRef2 = useRef<HTMLDivElement>(null);
   const [hasWidth, setHasWidth] = useState(false);
@@ -126,6 +168,16 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   }), [t]);
 
   const total = useMemo(() => expenses.reduce((sum, exp) => sum + exp.totalAmount, 0), [expenses]);
+
+  const sortedExpenses = useMemo(() => {
+    return [...expenses].sort((a, b) => {
+      if (sortType === 'date_desc') return new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (sortType === 'date_asc') return new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (sortType === 'amount_desc') return b.totalAmount - a.totalAmount;
+      if (sortType === 'amount_asc') return a.totalAmount - b.totalAmount;
+      return 0;
+    });
+  }, [expenses, sortType]);
 
   const categoryData = useMemo(() => {
     return CATEGORIES.map(cat => {
@@ -159,12 +211,24 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
       .slice(-6); // Last 6 months
   }, [expenses]);
 
-  const handleAddExpense = (newExpense: Expense) => {
-    setExpenses(prev => [newExpense, ...prev]);
+  const handleSaveExpense = (e: Expense) => {
+    if (editingExpense) {
+      setExpenses(prev => prev.map(old => old.id === editingExpense.id ? e : old));
+      setEditingExpense(null);
+    } else {
+      setExpenses(prev => [e, ...prev]);
+    }
+  };
+
+  const handleEditExpense = (exp: Expense) => {
+    setEditingExpense(exp);
+    setIsModalOpen(true);
   };
 
   const handleDeleteExpense = (id: string) => {
-    setExpenses(prev => prev.filter(exp => exp.id !== id));
+    if (window.confirm(t('delete_group_confirm'))) {
+      setExpenses(prev => prev.filter(exp => exp.id !== id));
+    }
   };
 
   if (showAnalysis) {
@@ -362,13 +426,57 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
 
         {/* List Section */}
         <section className="flex flex-col gap-3 pb-24">
-          <div className="flex items-center justify-between px-1">
+          <div className="flex items-center justify-between px-1 relative">
             <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('recent_records')}</h2>
+            
+            <div className="relative">
+              <button 
+                onClick={() => setIsSortOpen(!isSortOpen)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 active:bg-gray-100 transition-colors"
+                aria-label={t('sort')}
+              >
+                <span className="text-[10px] font-bold text-gray-400 capitalize">{t('sort')}</span>
+                <ChevronDown size={12} className={cn("text-gray-300 transition-transform", isSortOpen && "rotate-180")} />
+              </button>
+
+              <AnimatePresence>
+                {isSortOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsSortOpen(false)} 
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-xl z-50 overflow-hidden"
+                    >
+                      {(['date_desc', 'date_asc', 'amount_desc', 'amount_asc'] as const).map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            setSortType(type);
+                            setIsSortOpen(false);
+                          }}
+                          className={cn(
+                            "w-full px-4 py-3 text-left text-[13px] font-medium transition-colors border-b border-gray-50 last:border-0",
+                            sortType === type ? "text-[var(--color-ios-blue)] bg-blue-50/50" : "text-gray-600 active:bg-gray-50"
+                          )}
+                        >
+                          {t(`sort_${type}`)}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
           
           <div className="flex flex-col gap-2.5">
             <AnimatePresence mode="popLayout">
-              {expenses.length === 0 ? (
+              {sortedExpenses.length === 0 ? (
                 <div className="ios-card flex flex-col items-center justify-center py-12 px-4 text-center gap-2" key="empty">
                   <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-2">
                     <Sparkles size={24} className="text-gray-200" />
@@ -378,11 +486,12 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                   </span>
                 </div>
               ) : (
-                expenses.map((exp) => (
+                sortedExpenses.map((exp) => (
                   <SwipeableExpenseItem 
                     key={exp.id} 
                     exp={exp} 
-                    onDelete={handleDeleteExpense} 
+                    onDelete={handleDeleteExpense}
+                    onEdit={handleEditExpense}
                   />
                 ))
               )}
@@ -393,9 +502,13 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
 
       <CreateExpenseModal 
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingExpense(null);
+        }}
         members={[selfMember]}
-        onSave={handleAddExpense}
+        onSave={handleSaveExpense}
+        initialExpense={editingExpense || undefined}
       />
     </div>
   );
