@@ -226,9 +226,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   };
 
   const handleDeleteExpense = (id: string) => {
-    if (window.confirm(t('delete_group_confirm'))) {
-      setExpenses(prev => prev.filter(exp => exp.id !== id));
-    }
+    setExpenses(prev => prev.filter(exp => exp.id !== id));
   };
 
   if (showAnalysis) {

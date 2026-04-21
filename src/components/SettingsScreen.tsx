@@ -34,11 +34,11 @@ interface SettingsScreenProps {
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout, error }) => {
   const { t } = useTranslation();
   const { bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage } = useData();
-  const [activeSheet, setActiveSheet] = useState<'theme' | 'font' | 'language' | null>(null);
+  const [activeSheet, setActiveSheet] = useState<'theme' | 'font' | 'language' | 'logout' | null>(null);
 
   const currentTheme = THEME_OPTIONS.find(t => t.id === bgTexture) || THEME_OPTIONS[0];
   const currentLang = LANGUAGE_OPTIONS.find(l => l.id === language) || LANGUAGE_OPTIONS[0];
-  
+
   const fontSizeLabels: Record<string, string> = {
     small: t('small'),
     medium: t('medium'),
@@ -58,6 +58,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
     return 2;
   };
 
+  const handleLogoutWithConfirm = () => {
+    onLogout();
+    setActiveSheet(null);
+  };
+
   const renderSheet = () => (
     <AnimatePresence>
       {activeSheet && (
@@ -71,7 +76,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
           />
           
           <motion.div 
-            drag="y"
+            drag={activeSheet !== 'logout' ? "y" : false}
             dragConstraints={{ top: 0 }}
             dragElastic={0.2}
             onDragEnd={(_, info) => {
@@ -83,104 +88,133 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="relative bg-[var(--color-ios-bg)] w-full max-w-lg rounded-t-[24px] shadow-2xl overflow-hidden pb-10"
+            className={cn(
+              "relative w-full max-w-lg overflow-hidden pb-10",
+              activeSheet === 'logout' ? "bg-transparent px-4 flex flex-col gap-3" : "bg-[var(--color-ios-bg)] rounded-t-[24px] shadow-2xl"
+            )}
           >
-            {/* Drag Handle */}
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-300 rounded-full z-[210]" />
+            {activeSheet !== 'logout' && (
+              <>
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-300 rounded-full z-[210]" />
+                <div className="p-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] bg-white/80 backdrop-blur-md">
+                  <span className="text-[17px] font-bold ml-2">
+                    {activeSheet === 'theme' ? t('bg_color') : activeSheet === 'font' ? t('font_size') : t('language')}
+                  </span>
+                  <button 
+                    onClick={() => setActiveSheet(null)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:scale-90 transition-all"
+                  >
+                    <X size={18} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </>
+            )}
 
-            <div className="p-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] bg-white/80 backdrop-blur-md">
-              <span className="text-[17px] font-bold ml-2">
-                {activeSheet === 'theme' ? t('bg_color') : activeSheet === 'font' ? t('font_size') : t('language')}
-              </span>
-              <button 
-                onClick={() => setActiveSheet(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:scale-90 transition-all"
-              >
-                <X size={18} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            <div className="p-6">
-              {activeSheet === 'theme' ? (
-                <div className="grid grid-cols-5 gap-3">
-                  {THEME_OPTIONS.map((theme) => (
-                    <button
-                      key={theme.id}
-                      onClick={() => {
-                        setBgTexture(theme.id);
-                        setTimeout(() => setActiveSheet(null), 200);
-                      }}
-                      className={cn(
-                        "relative flex flex-col items-center gap-2 p-1 transition-all",
-                      )}
-                    >
-                      <div 
+            {activeSheet === 'logout' ? (
+              <>
+                <div className="w-full bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl">
+                  <div className="p-4 text-center border-b border-gray-200">
+                    <p className="text-[13px] text-[#8E8E93] font-medium leading-tight">
+                      {'確定要登出嗎？資料已儲存在雲端。'}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={handleLogoutWithConfirm}
+                    className="w-full p-4 text-[#FF3B30] text-[20px] font-medium active:bg-gray-100 transition-colors"
+                  >
+                    {t('logout')}
+                  </button>
+                </div>
+                <button 
+                  onClick={() => setActiveSheet(null)}
+                  className="w-full bg-white p-4 text-[#007AFF] text-[20px] font-bold rounded-2xl shadow-lg active:bg-gray-100 transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+              </>
+            ) : (
+              <div className="p-6">
+                {activeSheet === 'theme' ? (
+                  <div className="grid grid-cols-5 gap-3">
+                    {THEME_OPTIONS.map((theme) => (
+                      <button
+                        key={theme.id}
+                        onClick={() => {
+                          setBgTexture(theme.id);
+                          setTimeout(() => setActiveSheet(null), 200);
+                        }}
                         className={cn(
-                          "w-12 h-12 rounded-full shadow-sm flex items-center justify-center border-2 transition-all",
-                          bgTexture === theme.id ? "border-[var(--color-ios-blue)] scale-110" : "border-white"
+                          "relative flex flex-col items-center gap-2 p-1 transition-all",
                         )}
-                        style={{ backgroundColor: theme.color }}
                       >
-                        {bgTexture === theme.id && <Check size={20} className="text-[var(--color-ios-blue)]" />}
-                      </div>
-                      <span className={cn(
-                        "text-[10px] font-bold transition-colors",
-                        bgTexture === theme.id ? "text-[var(--color-ios-blue)]" : "text-gray-400"
-                      )}>
-                        {theme.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : activeSheet === 'font' ? (
-                <div className="flex flex-col gap-6 py-4">
-                  <div className="flex justify-between items-end px-2">
-                    <span className="text-[14px] font-bold text-gray-400">A</span>
-                    <span className="text-[18px] font-bold text-gray-400 font-serif">A</span>
-                    <span className="text-[24px] font-bold text-gray-400">A</span>
+                        <div 
+                          className={cn(
+                            "w-12 h-12 rounded-full shadow-sm flex items-center justify-center border-2 transition-all",
+                            bgTexture === theme.id ? "border-[var(--color-ios-blue)] scale-110" : "border-white"
+                          )}
+                          style={{ backgroundColor: theme.color }}
+                        >
+                          {bgTexture === theme.id && <Check size={20} className="text-[var(--color-ios-blue)]" />}
+                        </div>
+                        <span className={cn(
+                          "text-[10px] font-bold transition-colors",
+                          bgTexture === theme.id ? "text-[var(--color-ios-blue)]" : "text-gray-400"
+                        )}>
+                          {theme.label}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <div className="relative px-2">
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="2" 
-                      step="1"
-                      value={getFontValue()}
-                      onChange={handleFontChange}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[var(--color-ios-blue)]"
-                    />
-                    <div className="absolute top-1/2 left-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
-                    <div className="absolute top-1/2 right-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                ) : activeSheet === 'font' ? (
+                  <div className="flex flex-col gap-6 py-4">
+                    <div className="flex justify-between items-end px-2">
+                      <span className="text-[14px] font-bold text-gray-400">A</span>
+                      <span className="text-[18px] font-bold text-gray-400 font-serif">A</span>
+                      <span className="text-[24px] font-bold text-gray-400">A</span>
+                    </div>
+                    <div className="relative px-2">
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="2" 
+                        step="1"
+                        value={getFontValue()}
+                        onChange={handleFontChange}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[var(--color-ios-blue)]"
+                      />
+                      <div className="absolute top-1/2 left-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                      <div className="absolute top-1/2 right-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
+                    </div>
+                    <p className="text-center text-[13px] font-bold text-[var(--color-ios-grey)] mt-2 italic">
+                      {t('current_size')}：{fontSizeLabels[fontSize]}
+                    </p>
                   </div>
-                  <p className="text-center text-[13px] font-bold text-[var(--color-ios-grey)] mt-2 italic">
-                    {t('current_size')}：{fontSizeLabels[fontSize]}
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {LANGUAGE_OPTIONS.map((lang) => (
-                    <button
-                      key={lang.id}
-                      onClick={() => {
-                        setLanguage(lang.id);
-                        setTimeout(() => setActiveSheet(null), 200);
-                      }}
-                      className={cn(
-                        "w-full p-4 flex items-center justify-between rounded-xl transition-all",
-                        language === lang.id ? "bg-blue-50 text-[var(--color-ios-blue)]" : "bg-gray-50 text-gray-700"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl">{lang.icon}</span>
-                        <span className="font-bold">{lang.label}</span>
-                      </div>
-                      {language === lang.id && <Check size={20} />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {LANGUAGE_OPTIONS.map((lang) => (
+                      <button
+                        key={lang.id}
+                        onClick={() => {
+                          setLanguage(lang.id);
+                          setTimeout(() => setActiveSheet(null), 200);
+                        }}
+                        className={cn(
+                          "w-full p-4 flex items-center justify-between rounded-xl transition-all",
+                          language === lang.id ? "bg-blue-50 text-[var(--color-ios-blue)]" : "bg-gray-50 text-gray-700"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">{lang.icon}</span>
+                          <span className="font-bold">{lang.label}</span>
+                        </div>
+                        {language === lang.id && <Check size={20} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         </div>
       )}
@@ -265,7 +299,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
 
             {user && (
               <button 
-                onClick={onLogout}
+                onClick={() => setActiveSheet('logout')}
                 className="w-full p-4 flex items-center gap-3 hover:bg-red-50 active:bg-red-100 transition-colors text-red-500 font-bold"
               >
                 <LogOut size={20} />

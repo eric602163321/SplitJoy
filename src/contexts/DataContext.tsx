@@ -242,19 +242,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const handleLogout = React.useCallback(async () => {
-    if (window.confirm('確定要登出嗎？資料已儲存在雲端。')) {
-      isLoggingOut.current = true;
-      try {
-        await signOut(auth);
-        setGroups([]);
-        setPersonalExpenses([]);
-        setMembers([]);
-        localStorage.removeItem(STORAGE_KEYS.GROUPS);
-        localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
-        localStorage.removeItem(STORAGE_KEYS.MEMBERS);
-      } finally {
-        setTimeout(() => { isLoggingOut.current = false; }, 1500);
-      }
+    isLoggingOut.current = true;
+    try {
+      await signOut(auth);
+      setGroups([]);
+      setPersonalExpenses([]);
+      setMembers([]);
+      localStorage.removeItem(STORAGE_KEYS.GROUPS);
+      localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
+      localStorage.removeItem(STORAGE_KEYS.MEMBERS);
+    } finally {
+      setTimeout(() => { isLoggingOut.current = false; }, 1500);
     }
   }, []);
 

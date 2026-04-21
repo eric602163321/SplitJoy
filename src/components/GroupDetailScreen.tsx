@@ -175,12 +175,10 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   };
 
   const handleDeleteExpense = (id: string) => {
-    if (window.confirm(t('delete_group_confirm'))) { // Re-using existing delete confirmation key
-      onUpdateGroup({
-        ...group,
-        expenses: group.expenses.filter(e => e.id !== id)
-      });
-    }
+    onUpdateGroup({
+      ...group,
+      expenses: group.expenses.filter(e => e.id !== id)
+    });
   };
 
   if (currentView === 'settlement') {
