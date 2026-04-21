@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw, Globe, Coins } from 'lucide-react';
+import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw, Globe, Coins, FileOutput } from 'lucide-react';
 import { Member, Expense, Debt } from '../types';
 import { CATEGORIES, RETRO_COLORS, CURRENCIES } from '../constants';
 import { calculateSettlement, cn } from '../lib/utils';
@@ -198,6 +198,42 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
 
   const settlements = useMemo(() => calculateSettlement(members, expenses), [members, expenses]);
 
+  const handleExportCSV = () => {
+    // 1. Headers for Category Summary
+    let csvContent = "\uFEFF"; // UTF-8 BOM for Excel visibility
+    csvContent += `${t('expense_categories')}\n`;
+    csvContent += `${t('description')},${t('amount')}\n`;
+    categoryData.forEach(cat => {
+      csvContent += `${cat.name},${cat.value.toFixed(2)}\n`;
+    });
+    
+    csvContent += `\n${t('personal_payable')}\n`;
+    csvContent += `${t('member_name')},${t('amount')}\n`;
+    memberSpending.forEach(m => {
+      csvContent += `${m.name},${m.total.toFixed(2)}\n`;
+    });
+
+    if (settlements.length > 0) {
+      csvContent += `\n${t('debt_details')}\n`;
+      csvContent += `${t('debt_from')},${t('debt_to')},${t('amount')}\n`;
+      settlements.forEach(debt => {
+        const fromName = members.find(m => m.id === debt.from)?.name || debt.from;
+        const toName = members.find(m => m.id === debt.to)?.name || debt.to;
+        csvContent += `${fromName},${toName},${debt.amount.toFixed(2)}\n`;
+      });
+    }
+
+    // Create blobs and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `SplitJoy_${groupName || 'Report'}_${new Date().toLocaleDateString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const [isReady, setIsReady] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [hasWidth, setHasWidth] = useState(false);
@@ -226,7 +262,16 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
 
       {/* Pie Chart Section */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider px-1">{t('expense_categories')}</h2>
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('expense_categories')}</h2>
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold text-[var(--color-ios-blue)] hover:bg-blue-50 transition-all border border-blue-100"
+          >
+            <FileOutput size={12} />
+            <span>{t('export_report')}</span>
+          </button>
+        </div>
         <div className="ios-card p-6 min-h-[240px] flex flex-col items-center justify-center">
           {categoryData.length > 0 ? (
             <>
