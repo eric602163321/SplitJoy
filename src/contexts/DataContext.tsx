@@ -148,28 +148,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, [user?.uid]);
 
-  // Local Storage & Cloud Sync (Upstream)
+  // Local Storage & Debounced Cloud Sync (Upstream)
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
   }, [groups]);
 
   useEffect(() => {
+    // Immediate persistence to LocalStorage
     localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
-    if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
-      if (personalExpenses.length > 0 || !isFirstPersonalLoad.current) {
-        updateUserData(user.uid, { personalExpenses }).catch(console.error);
-      }
-    }
-  }, [personalExpenses, user, hasLoadedPersonalFromCloud]);
-
-  useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+
+    // Debounced sync to Firebase (Wait 2.5s of inactivity)
     if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
-      if (members.length > 0 || !isFirstPersonalLoad.current) {
-        updateUserData(user.uid, { members }).catch(console.error);
+      // Avoid syncing empty local state immediately after auth if first load isn't done
+      if (personalExpenses.length > 0 || members.length > 0 || !isFirstPersonalLoad.current) {
+        const timer = setTimeout(() => {
+          console.log(`[Cloud Sync] Debounced update for ${user.uid}`);
+          updateUserData(user.uid, { personalExpenses, members }).catch(console.error);
+        }, 2500);
+        return () => clearTimeout(timer);
       }
     }
-  }, [members, user, hasLoadedPersonalFromCloud]);
+  }, [personalExpenses, members, user, hasLoadedPersonalFromCloud]);
 
   const updateTheme = React.useCallback((textureValue: string, sizeValue: 'small' | 'medium' | 'large') => {
     const root = document.documentElement;
@@ -209,17 +209,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const setBgTexture = (texture: string) => {
+  const setBgTexture = React.useCallback((texture: string) => {
     setBgTextureState(texture);
     localStorage.setItem('splitit_bg_texture', texture);
     updateTheme(texture, fontSize);
-  };
+  }, [updateTheme, fontSize]);
 
-  const setFontSize = (size: 'small' | 'medium' | 'large') => {
+  const setFontSize = React.useCallback((size: 'small' | 'medium' | 'large') => {
     setFontSizeState(size);
     localStorage.setItem('splitit_font_size', size);
     updateTheme(bgTexture, size);
-  };
+  }, [updateTheme, bgTexture]);
 
   const setLanguage = React.useCallback((lang: string) => {
     import('../i18n').then(i18n => {
@@ -232,16 +232,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateTheme(bgTexture, fontSize);
   }, [bgTexture, fontSize, updateTheme]);
 
-  const handleLogin = async () => {
+  const handleLogin = React.useCallback(async () => {
     setAuthError(null);
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (error: any) {
       setAuthError(error.message || 'Login failed');
     }
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = React.useCallback(async () => {
     if (window.confirm('確定要登出嗎？資料已儲存在雲端。')) {
       isLoggingOut.current = true;
       try {
@@ -256,16 +256,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTimeout(() => { isLoggingOut.current = false; }, 1500);
       }
     }
-  };
+  }, []);
 
-  const addPersonalExpense = (expense: Expense) => {
+  const addPersonalExpense = React.useCallback((expense: Expense) => {
     setPersonalExpenses(prev => [expense, ...prev]);
-  };
+  }, []);
 
-  const addMember = (m: Member) => setMembers(prev => [...prev, m]);
-  const removeMember = (id: string) => setMembers(prev => prev.filter(m => m.id !== id));
+  const addMember = React.useCallback((m: Member) => setMembers(prev => [...prev, m]), []);
+  const removeMember = React.useCallback((id: string) => setMembers(prev => prev.filter(m => m.id !== id)), []);
 
-  const addGroup = async (newGroup: Group) => {
+  const addGroup = React.useCallback(async (newGroup: Group) => {
     setGroups(prev => [newGroup, ...prev]);
     if (user) {
       try { await createGroup(newGroup, user.uid); }
@@ -274,29 +274,54 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw e;
       }
     }
-  };
+  }, [user]);
 
-  const updateGroup = async (updatedGroup: Group) => {
+  const updateGroup = React.useCallback(async (updatedGroup: Group) => {
     if (user) {
       await updateGroupDetails(updatedGroup.id, updatedGroup);
     } else {
       setGroups(prev => prev.map(g => (g.id === updatedGroup.id ? updatedGroup : g)));
     }
-  };
+  }, [user]);
 
-  const removeGroup = async (id: string) => {
+  const removeGroup = React.useCallback(async (id: string) => {
     setGroups(prev => prev.filter(g => g.id !== id));
     if (user) await deleteGroup(id);
-  };
+  }, [user]);
+
+  const contextValue = React.useMemo(() => ({
+    user, 
+    groups, 
+    personalExpenses, 
+    members, 
+    isAuthLoading,
+    isInitialSyncComplete: hasLoadedPersonalFromCloud && hasLoadedGroupsFromCloud,
+    authError, 
+    handleLogin, 
+    handleLogout, 
+    addPersonalExpense, 
+    setPersonalExpenses,
+    addMember, 
+    removeMember, 
+    addGroup, 
+    updateGroup, 
+    removeGroup,
+    bgTexture, 
+    setBgTexture, 
+    fontSize, 
+    setFontSize, 
+    language, 
+    setLanguage
+  }), [
+    user, groups, personalExpenses, members, isAuthLoading, 
+    hasLoadedPersonalFromCloud, hasLoadedGroupsFromCloud, authError,
+    handleLogin, handleLogout, addPersonalExpense, addMember, 
+    removeMember, addGroup, updateGroup, removeGroup,
+    bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage
+  ]);
 
   return (
-    <DataContext.Provider value={{
-      user, groups, personalExpenses, members, isAuthLoading,
-      isInitialSyncComplete: hasLoadedPersonalFromCloud && hasLoadedGroupsFromCloud,
-      authError, handleLogin, handleLogout, addPersonalExpense, setPersonalExpenses,
-      addMember, removeMember, addGroup, updateGroup, removeGroup,
-      bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage
-    }}>
+    <DataContext.Provider value={contextValue}>
       {children}
     </DataContext.Provider>
   );

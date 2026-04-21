@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useTranslation } from 'react-i18next';
@@ -173,26 +173,30 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
     setSettledDebtKeys(next);
   };
 
-  const categoryData = CATEGORIES.map(cat => {
-    const total = expenses
-      .filter(exp => exp.category === cat.id)
-      .reduce((sum, exp) => sum + exp.totalAmount, 0);
-    return { 
-      name: i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`), 
-      value: total, 
-      color: cat.color 
-    };
-  }).filter(d => d.value > 0);
+  const categoryData = useMemo(() => {
+    return CATEGORIES.map(cat => {
+      const total = expenses
+        .filter(exp => exp.category === cat.id)
+        .reduce((sum, exp) => sum + exp.totalAmount, 0);
+      return { 
+        name: i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`), 
+        value: total, 
+        color: cat.color 
+      };
+    }).filter(d => d.value > 0);
+  }, [expenses, i18n.language, t]);
 
-  const memberSpending = members.map(m => {
-    const total = expenses.reduce((sum, exp) => {
-      const split = exp.splits.find(s => s.memberId === m.id);
-      return sum + (split?.amount || 0);
-    }, 0);
-    return { ...m, total };
-  });
+  const memberSpending = useMemo(() => {
+    return members.map(m => {
+      const total = expenses.reduce((sum, exp) => {
+        const split = exp.splits.find(s => s.memberId === m.id);
+        return sum + (split?.amount || 0);
+      }, 0);
+      return { ...m, total };
+    });
+  }, [members, expenses]);
 
-  const settlements = calculateSettlement(members, expenses);
+  const settlements = useMemo(() => calculateSettlement(members, expenses), [members, expenses]);
 
   const [isReady, setIsReady] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);

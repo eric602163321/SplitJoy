@@ -125,7 +125,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     avatar: AVATARS[0].id
   }), [t]);
 
-  const total = expenses.reduce((sum, exp) => sum + exp.totalAmount, 0);
+  const total = useMemo(() => expenses.reduce((sum, exp) => sum + exp.totalAmount, 0), [expenses]);
 
   const categoryData = useMemo(() => {
     return CATEGORIES.map(cat => {
