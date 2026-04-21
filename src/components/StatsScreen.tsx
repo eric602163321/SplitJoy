@@ -197,6 +197,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
   }, [members, expenses]);
 
   const settlements = useMemo(() => calculateSettlement(members, expenses), [members, expenses]);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
 
   const handleExportCSV = () => {
     // 1. Headers for Category Summary
@@ -232,6 +233,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setShowExportConfirm(false);
   };
 
   const [isReady, setIsReady] = useState(false);
@@ -265,7 +267,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
         <div className="flex items-center justify-between px-1">
           <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('expense_categories')}</h2>
           <button 
-            onClick={handleExportCSV}
+            onClick={() => setShowExportConfirm(true)}
             className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold text-[var(--color-ios-blue)] hover:bg-blue-50 transition-all border border-blue-100"
           >
             <FileOutput size={12} />
@@ -551,6 +553,48 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
           </div>
         )}
       </section>
+
+      {/* iOS Style Action Sheet for Export Confirmation */}
+      <AnimatePresence>
+        {showExportConfirm && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowExportConfirm(false)}
+              className="fixed inset-0 bg-black/40 z-[200] backdrop-blur-[2px]"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-[201] p-4 pb-12 flex flex-col gap-3 items-center"
+            >
+              <div className="w-full max-w-sm bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 text-center border-b border-gray-200">
+                  <p className="text-[13px] text-[#8E8E93] font-medium leading-tight">
+                    {t('export_confirm')}
+                  </p>
+                </div>
+                <button 
+                  onClick={handleExportCSV}
+                  className="w-full p-4 text-[var(--color-ios-blue)] text-[20px] font-medium active:bg-gray-100 transition-colors"
+                >
+                  {t('export_report')}
+                </button>
+              </div>
+              <button 
+                onClick={() => setShowExportConfirm(false)}
+                className="w-full max-w-sm bg-white p-4 text-[#007AFF] text-[20px] font-bold rounded-2xl shadow-lg active:bg-gray-100 transition-colors"
+              >
+                {t('cancel')}
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
