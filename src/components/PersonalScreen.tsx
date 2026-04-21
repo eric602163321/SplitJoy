@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, Sparkles, ChevronRight, BarChart3, ArrowLeft, TrendingUp, ChevronDown, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Expense, Member } from '../types';
 import { CATEGORIES, RETRO_COLORS } from '../constants';
@@ -8,16 +9,11 @@ import { AVATARS } from './AvatarGrid';
 import CreateExpenseModal from './CreateExpenseModal';
 import { cn } from '../lib/utils';
 
-const SELF_MEMBER: Member = {
-  id: 'self',
-  name: '我自己',
-  avatar: AVATARS[0].id
-};
-
 const SwipeableExpenseItem: React.FC<{
   exp: Expense;
   onDelete: (id: string) => void;
 }> = ({ exp, onDelete }) => {
+  const { i18n } = useTranslation();
   const x = useMotionValue(0);
   const deleteOpacity = useTransform(x, [0, 60], [0, 1]);
   const deleteScale = useTransform(x, [0, 60], [0.5, 1]);
@@ -68,7 +64,9 @@ const SwipeableExpenseItem: React.FC<{
           <div className="flex flex-col">
             <span className="font-bold text-[15px] text-black">{exp.description}</span>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-[var(--color-ios-grey)]">{new Date(exp.date).toLocaleDateString()}</span>
+              <span className="text-[11px] font-medium text-[var(--color-ios-grey)]">
+                {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
+              </span>
               {exp.notes && (
                 <>
                   <div className="w-0.5 h-0.5 rounded-full bg-gray-300" />
@@ -95,10 +93,37 @@ interface PersonalScreenProps {
 }
 
 export default function PersonalScreen({ expenses, setExpenses }: PersonalScreenProps) {
+  const { t, i18n } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const containerRef1 = useRef<HTMLDivElement>(null);
+  const containerRef2 = useRef<HTMLDivElement>(null);
+  const [hasWidth, setHasWidth] = useState(false);
   const dragControls = useDragControls();
+
+  useEffect(() => {
+    if (showAnalysis) {
+      // Even after animation, give it a tiny bit of time for layout to settle
+      const timer = setTimeout(() => {
+        setIsReady(true);
+        if (containerRef1.current?.clientWidth || containerRef2.current?.clientWidth) {
+          setHasWidth(true);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setIsReady(false);
+      setHasWidth(false);
+    }
+  }, [showAnalysis]);
+
+  const selfMember: Member = useMemo(() => ({
+    id: 'self',
+    name: t('me'),
+    avatar: AVATARS[0].id
+  }), [t]);
 
   const total = expenses.reduce((sum, exp) => sum + exp.totalAmount, 0);
 
@@ -107,9 +132,14 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
       const value = expenses
         .filter(exp => exp.category === cat.id)
         .reduce((sum, exp) => sum + exp.totalAmount, 0);
-      return { name: cat.label, value, color: cat.color, id: cat.id };
+      return { 
+        name: i18n.language === 'zh' ? cat.label : (t(`cat_${cat.id}`) || cat.label), 
+        value, 
+        color: cat.color, 
+        id: cat.id 
+      };
     }).filter(d => d.value > 0);
-  }, [expenses]);
+  }, [expenses, i18n.language]);
 
   const monthlyTrendData = useMemo(() => {
     const months: Record<string, number> = {};
@@ -157,7 +187,9 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         }}
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent"
+        onAnimationComplete={() => setIsReady(true)}
+        className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent touch-action-none sm:touch-pan-y"
+        style={{ touchAction: 'pan-y' }}
       >
         <header className="px-1 pt-8 flex items-center gap-4">
           <button 
@@ -167,27 +199,27 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
             <ArrowLeft size={20} className="text-black" />
           </button>
           <div>
-            <h1 className="text-2xl font-extrabold text-black tracking-tight">支出分析</h1>
-            <span className="text-[10px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">數據統計與趨勢</span>
+            <h1 className="text-2xl font-extrabold text-black tracking-tight">{t('stats')}</h1>
+            <span className="text-[10px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('stats_desc_sub')}</span>
           </div>
         </header>
 
         <div className="flex flex-col gap-6">
           {/* Category Pie Chart */}
-          <section className="ios-card p-6 flex flex-col gap-4">
+          <section className="ios-card p-4 flex flex-col gap-3">
             <h3 className="text-sm font-bold text-black flex items-center gap-2">
               <Sparkles size={16} className="text-amber-400" />
-              各大項支出佔比
+              {t('category_ratio')}
             </h3>
-            <div className="h-64 w-full">
-              {categoryData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+            <div className="w-full relative min-h-[160px]" ref={containerRef1}>
+              {categoryData.length > 0 && isReady && hasWidth ? (
+                <ResponsiveContainer width="100%" aspect={2.0}>
+                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                     <Pie
                       data={categoryData}
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
+                      innerRadius={55}
+                      outerRadius={75}
+                      paddingAngle={3}
                       dataKey="value"
                     >
                       {categoryData.map((entry, index) => (
@@ -200,7 +232,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-300 text-sm font-medium">尚無足夠數據</div>
+                <div className="h-full flex items-center justify-center text-gray-300 text-sm font-medium">{t('no_data')}</div>
               )}
             </div>
 
@@ -238,7 +270,9 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                             <div key={exp.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-xs">
                               <div className="flex flex-col gap-0.5">
                                 <span className="font-bold text-gray-800">{exp.description}</span>
-                                <span className="text-[10px] text-gray-400">{new Date(exp.date).toLocaleDateString()}</span>
+                                <span className="text-[10px] text-gray-400">
+                                  {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
+                                </span>
                               </div>
                               <span className="font-bold text-gray-600">${exp.totalAmount.toLocaleString()}</span>
                             </div>
@@ -255,11 +289,11 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
           <section className="ios-card p-6 flex flex-col gap-6">
             <h3 className="text-sm font-bold text-black flex items-center gap-2">
               <TrendingUp size={16} className="text-[var(--color-ios-blue)]" />
-              每月支出趨勢
+              {t('monthly_trend')}
             </h3>
-            <div className="h-48 w-full">
-              {monthlyTrendData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full relative min-h-[160px]" ref={containerRef2}>
+              {monthlyTrendData.length > 0 && isReady && hasWidth ? (
+                <ResponsiveContainer width="100%" aspect={2}>
                   <LineChart data={monthlyTrendData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F0F0F0" />
                     <XAxis 
@@ -285,7 +319,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-300 text-sm font-medium">趨勢數據生成中</div>
+                <div className="h-full flex items-center justify-center text-gray-300 text-sm font-medium">{t('generating_data')}</div>
               )}
             </div>
           </section>
@@ -297,14 +331,14 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   return (
     <div className="flex flex-col gap-6">
       <header className="px-1 pt-8">
-        <h1 className="text-3xl font-extrabold text-black tracking-tight">個人記帳</h1>
+        <h1 className="text-3xl font-extrabold text-black tracking-tight">{t('personal')}</h1>
       </header>
 
       <div className="flex flex-col gap-6">
         {/* Total Card - Restored large style */}
         <section>
           <div className="ios-card flex flex-col items-center justify-center py-8 gap-1 bg-white shadow-md">
-            <span className="text-xs font-bold text-[var(--color-ios-grey)] uppercase tracking-widest">本月總支出</span>
+            <span className="text-xs font-bold text-[var(--color-ios-grey)] uppercase tracking-widest">{t('monthly_total')}</span>
             <span className="text-5xl font-black text-black tracking-tighter">${total.toLocaleString()}</span>
           </div>
         </section>
@@ -315,21 +349,21 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
             className="flex-[2] ios-btn-primary flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
           >
             <Plus size={20} strokeWidth={3} />
-            新增支出
+            {t('add_expense')}
           </button>
           <button 
             onClick={() => setShowAnalysis(true)}
             className="flex-1 bg-white border border-gray-100 rounded-2xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
           >
             <BarChart3 size={20} className="text-[var(--color-ios-blue)]" strokeWidth={2.5} />
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">支出分析</span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{t('stats')}</span>
           </button>
         </div>
 
         {/* List Section */}
         <section className="flex flex-col gap-3 pb-24">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">最近紀錄</h2>
+            <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('recent_records')}</h2>
           </div>
           
           <div className="flex flex-col gap-2.5">
@@ -340,7 +374,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                     <Sparkles size={24} className="text-gray-200" />
                   </div>
                   <span className="text-[var(--color-ios-grey)] font-medium text-sm leading-relaxed max-w-[200px]">
-                    目前還沒有記帳喔！<br/>點擊上方按鈕開始第一筆吧。
+                    {t('no_expense_yet')}<br/>{t('click_to_start')}
                   </span>
                 </div>
               ) : (
@@ -360,7 +394,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
       <CreateExpenseModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        members={[SELF_MEMBER]}
+        members={[selfMember]}
         onSave={handleAddExpense}
       />
     </div>

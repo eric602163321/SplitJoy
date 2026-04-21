@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User as UserType } from 'firebase/auth';
-import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X, Languages } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
 import { cn } from '../lib/utils';
 
@@ -18,6 +19,11 @@ const THEME_OPTIONS = [
   { id: 'warm', label: '溫暖橘', color: '#FFF9F5' },
 ];
 
+const LANGUAGE_OPTIONS = [
+  { id: 'zh', label: '繁體中文', icon: '🇹🇼' },
+  { id: 'en', label: 'English', icon: '🇺🇸' },
+];
+
 interface SettingsScreenProps {
   user: UserType | null;
   onLogin: () => void;
@@ -26,15 +32,17 @@ interface SettingsScreenProps {
 }
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout, error }) => {
-  const { bgTexture, setBgTexture, fontSize, setFontSize } = useData();
-  const [activeSheet, setActiveSheet] = useState<'theme' | 'font' | null>(null);
+  const { t } = useTranslation();
+  const { bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage } = useData();
+  const [activeSheet, setActiveSheet] = useState<'theme' | 'font' | 'language' | null>(null);
 
   const currentTheme = THEME_OPTIONS.find(t => t.id === bgTexture) || THEME_OPTIONS[0];
+  const currentLang = LANGUAGE_OPTIONS.find(l => l.id === language) || LANGUAGE_OPTIONS[0];
   
   const fontSizeLabels: Record<string, string> = {
-    small: '小',
-    medium: '中',
-    large: '大'
+    small: t('small'),
+    medium: t('medium'),
+    large: t('large')
   };
 
   const handleFontChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,7 +90,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
 
             <div className="p-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] bg-white/80 backdrop-blur-md">
               <span className="text-[17px] font-bold ml-2">
-                {activeSheet === 'theme' ? '選擇背景顏色' : '調整字體大小'}
+                {activeSheet === 'theme' ? t('bg_color') : activeSheet === 'font' ? t('font_size') : t('language')}
               </span>
               <button 
                 onClick={() => setActiveSheet(null)}
@@ -124,7 +132,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                     </button>
                   ))}
                 </div>
-              ) : (
+              ) : activeSheet === 'font' ? (
                 <div className="flex flex-col gap-6 py-4">
                   <div className="flex justify-between items-end px-2">
                     <span className="text-[14px] font-bold text-gray-400">A</span>
@@ -146,8 +154,30 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                     <div className="absolute top-1/2 right-2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full pointer-events-none" />
                   </div>
                   <p className="text-center text-[13px] font-bold text-[var(--color-ios-grey)] mt-2 italic">
-                    當前大小：{fontSizeLabels[fontSize]}
+                    {t('current_size')}：{fontSizeLabels[fontSize]}
                   </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {LANGUAGE_OPTIONS.map((lang) => (
+                    <button
+                      key={lang.id}
+                      onClick={() => {
+                        setLanguage(lang.id);
+                        setTimeout(() => setActiveSheet(null), 200);
+                      }}
+                      className={cn(
+                        "w-full p-4 flex items-center justify-between rounded-xl transition-all",
+                        language === lang.id ? "bg-blue-50 text-[var(--color-ios-blue)]" : "bg-gray-50 text-gray-700"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{lang.icon}</span>
+                        <span className="font-bold">{lang.label}</span>
+                      </div>
+                      {language === lang.id && <Check size={20} />}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -161,14 +191,14 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
     <div className="flex flex-col gap-6 select-none relative">
       {renderSheet()}
       <div className="flex flex-col gap-1 px-2 pt-4">
-        <h1 className="text-3xl font-black text-gray-900 tracking-tight">設置</h1>
-        <p className="text-sm font-bold text-gray-400">管理您的帳戶與應用偏好</p>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">{t('settings')}</h1>
+        <p className="text-sm font-bold text-gray-400">{t('settings_desc')}</p>
       </div>
 
       <div className="flex flex-col gap-4">
         {/* Account Section */}
         <section className="flex flex-col gap-2">
-          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">帳戶</h2>
+          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">{t('account')}</h2>
           
           {error && (
             <motion.div 
@@ -193,9 +223,12 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-[var(--color-ios-blue)] border-2 border-blue-100">
-                      <UserIcon size={24} />
-                    </div>
+                    <img 
+                      src="https://img.icons8.com/fluency/144/wallet.png" 
+                      alt="Logo" 
+                      className="w-12 h-12 rounded-full border-2 border-[var(--color-ios-blue)] p-0.5 object-contain"
+                      referrerPolicy="no-referrer"
+                    />
                   )}
                   <div className="flex flex-col">
                     <span className="font-black text-gray-900">{user.displayName}</span>
@@ -204,7 +237,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full">
                   <Shield size={12} className="text-[var(--color-ios-blue)]" />
-                  <span className="text-[10px] font-black text-[var(--color-ios-blue)] uppercase">Cloud Sync</span>
+                  <span className="text-[10px] font-black text-[var(--color-ios-blue)] uppercase">{t('cloud_sync')}</span>
                 </div>
               </div>
             ) : (
@@ -213,12 +246,17 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 border border-gray-100">
-                    <LogIn size={24} />
+                  <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-gray-400 border border-gray-100 shadow-sm overflow-hidden p-2.5">
+                    <img 
+                      src="https://www.gstatic.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" 
+                      alt="Google" 
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                   <div className="flex flex-col">
-                    <span className="font-black text-gray-900">登入同步</span>
-                    <span className="text-xs text-gray-400 font-bold">備份資料並跨裝置共享</span>
+                    <span className="font-black text-gray-900">{t('login')}</span>
+                    <span className="text-xs text-gray-400 font-bold">{t('backup_desc')}</span>
                   </div>
                 </div>
                 <ChevronRight size={18} className="text-gray-300" />
@@ -231,7 +269,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 className="w-full p-4 flex items-center gap-3 hover:bg-red-50 active:bg-red-100 transition-colors text-red-500 font-bold"
               >
                 <LogOut size={20} />
-                <span>登出帳戶</span>
+                <span>{t('logout')}</span>
               </button>
             )}
           </div>
@@ -239,8 +277,24 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
 
         {/* Appearance Section */}
         <section className="flex flex-col gap-2">
-          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">個人化</h2>
+          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">{t('personalization')}</h2>
           <div className="ios-card divide-y divide-[var(--color-ios-separator)]">
+            <button 
+              onClick={() => setActiveSheet('language')}
+              className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600">
+                  <Languages size={18} />
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="font-bold text-gray-900">{t('language')}</span>
+                  <span className="text-[11px] text-gray-400 font-bold">{currentLang.label}</span>
+                </div>
+              </div>
+              <ChevronRight size={18} className="text-gray-300" />
+            </button>
+
             <button 
               onClick={() => setActiveSheet('theme')}
               className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"
@@ -250,7 +304,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                   <Palette size={18} />
                 </div>
                 <div className="flex flex-col items-start">
-                  <span className="font-bold text-gray-900">背景顏色</span>
+                  <span className="font-bold text-gray-900">{t('bg_color')}</span>
                   <span className="text-[11px] text-gray-400 font-bold">{currentTheme.label}</span>
                 </div>
               </div>
@@ -266,7 +320,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                   <Type size={18} />
                 </div>
                 <div className="flex flex-col items-start">
-                  <span className="font-bold text-gray-900">字體大小</span>
+                  <span className="font-bold text-gray-900">{t('font_size')}</span>
                   <span className="text-[11px] text-gray-400 font-bold">{fontSizeLabels[fontSize]}</span>
                 </div>
               </div>
@@ -277,15 +331,15 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
 
         {/* General Section */}
         <section className="flex flex-col gap-2">
-          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">關於</h2>
+          <h2 className="px-2 text-xs font-black text-gray-400 uppercase tracking-widest">{t('about')}</h2>
           <div className="ios-card divide-y divide-[var(--color-ios-separator)]">
             <div className="p-4 flex items-center justify-between">
-              <span className="font-bold text-gray-700">版本</span>
+              <span className="font-bold text-gray-700">{t('version')}</span>
               <span className="text-sm font-bold text-gray-400">1.0.0</span>
             </div>
             <div className="p-4 flex items-center justify-between">
               <span className="font-bold text-gray-700">SplitJoy</span>
-              <span className="text-xs font-bold text-gray-400">Made with ❤️ for travel</span>
+              <span className="text-xs font-bold text-gray-400">{t('made_with')}</span>
             </div>
           </div>
         </section>

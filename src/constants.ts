@@ -14,11 +14,11 @@ export const RETRO_COLORS = [
 ];
 
 export const CURRENCIES = [
-  { code: 'TWD', name: 'NT$ 新台幣' },
-  { code: 'USD', name: '$ 美金' },
-  { code: 'JPY', name: '¥ 日圓' },
-  { code: 'HKD', name: 'HK$ 港幣' },
-  { code: 'EUR', name: '€ 歐元' },
-  { code: 'KRW', name: '₩ 韓圓' },
-  { code: 'THB', name: '฿ 泰銖' },
+  { code: 'TWD', name: 'currency_twd' },
+  { code: 'USD', name: 'currency_usd' },
+  { code: 'JPY', name: 'currency_jpy' },
+  { code: 'HKD', name: 'currency_hkd' },
+  { code: 'EUR', name: 'currency_eur' },
+  { code: 'KRW', name: 'currency_krw' },
+  { code: 'THB', name: 'currency_thb' },
 ];

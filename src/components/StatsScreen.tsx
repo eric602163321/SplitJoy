@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw, Globe, Coins } from 'lucide-react';
 import { Member, Expense, Debt } from '../types';
 import { CATEGORIES, RETRO_COLORS, CURRENCIES } from '../constants';
@@ -26,6 +27,7 @@ const SwipeableDebtItem: React.FC<{
     currency: string;
   };
 }> = ({ debt, members, isSettled, onToggle, index, conversion }) => {
+  const { t } = useTranslation();
   const x = useMotionValue(0);
   
   // Swipe Left (x < 0) -> Settle
@@ -86,7 +88,7 @@ const SwipeableDebtItem: React.FC<{
         dragConstraints={{ left: isSettled ? 0 : -80, right: isSettled ? 80 : 0 }}
         dragElastic={0.1}
         className={cn(
-          "bg-white p-4 flex items-center justify-between relative z-10 transition-colors duration-300",
+          "bg-white p-4 flex items-center justify-between relative z-10 transition-all duration-300",
           isSettled ? "bg-green-50" : "bg-white"
         )}
       >
@@ -95,7 +97,7 @@ const SwipeableDebtItem: React.FC<{
             <span className="text-[18px] mb-0.5">
               {AVATARS.find(a => a.id === fromMember?.avatar)?.emoji || "👤"}
             </span>
-            <span className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 whitespace-nowrap">付款方</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 whitespace-nowrap">{t('debt_from')}</span>
             <span className="text-[13px] font-extrabold text-black truncate w-16 text-center">{fromMember?.name}</span>
           </div>
           
@@ -107,7 +109,7 @@ const SwipeableDebtItem: React.FC<{
             <span className="text-[18px] mb-0.5">
               {AVATARS.find(a => a.id === toMember?.avatar)?.emoji || "👤"}
             </span>
-            <span className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 whitespace-nowrap">收錢方</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 whitespace-nowrap">{t('debt_to')}</span>
             <span className="text-[13px] font-extrabold text-black truncate w-16 text-center">{toMember?.name}</span>
           </div>
         </div>
@@ -117,7 +119,7 @@ const SwipeableDebtItem: React.FC<{
             "block text-[10px] font-bold uppercase mb-0.5 transition-colors",
             isSettled ? "text-green-600" : "text-[var(--color-ios-blue)]"
           )}>
-            {isSettled ? "已平帳" : "應轉帳"}
+            {isSettled ? t('settled') : t('to_transfer')}
           </span>
           <span className={cn(
             "text-xl font-black transition-colors",
@@ -125,7 +127,7 @@ const SwipeableDebtItem: React.FC<{
           )}>${debt.amount}</span>
           {conversion && conversion.rate !== 1 && (
             <div className="flex flex-col items-end mt-1">
-              <span className="text-[10px] text-slate-400 font-bold">轉換約</span>
+              <span className="text-[10px] text-slate-400 font-bold">{t('approx_conv')}</span>
               <span className="text-sm font-bold text-slate-600">
                 {conversion.currency} {(debt.amount * conversion.rate).toFixed(2)}
               </span>
@@ -148,6 +150,7 @@ const SwipeableDebtItem: React.FC<{
 };
 
 export default function StatsScreen({ members, expenses, groupName, currentCurrency }: StatsScreenProps) {
+  const { t, i18n } = useTranslation();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [settledDebtKeys, setSettledDebtKeys] = useState<Set<string>>(new Set());
@@ -170,15 +173,17 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
     setSettledDebtKeys(next);
   };
 
-  // 計算分類圓餅圖資料
   const categoryData = CATEGORIES.map(cat => {
     const total = expenses
       .filter(exp => exp.category === cat.id)
       .reduce((sum, exp) => sum + exp.totalAmount, 0);
-    return { name: cat.label, value: total, color: cat.color };
+    return { 
+      name: i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`), 
+      value: total, 
+      color: cat.color 
+    };
   }).filter(d => d.value > 0);
 
-  // 計算每個人總共花了多少錢 (此處定義為：每個人應負擔的總額)
   const memberSpending = members.map(m => {
     const total = expenses.reduce((sum, exp) => {
       const split = exp.splits.find(s => s.memberId === m.id);
@@ -189,42 +194,63 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
 
   const settlements = calculateSettlement(members, expenses);
 
+  const [isReady, setIsReady] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [hasWidth, setHasWidth] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsReady(true);
+      if (chartContainerRef.current?.clientWidth) {
+        setHasWidth(true);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      onAnimationComplete={() => setIsReady(true)}
+      className="flex flex-col gap-6 pb-24"
+    >
       <header className="px-1 pt-4 flex flex-col gap-1">
-        <h1 className="text-2xl font-extrabold text-black tracking-tight">{groupName || '未命名群組'}</h1>
-        <span className="text-[10px] font-bold text-[#8E8E93] tracking-widest uppercase">結算與統計分析</span>
+        <h1 className="text-2xl font-extrabold text-black tracking-tight">{groupName || t('unnamed_group')}</h1>
+        <span className="text-[10px] font-bold text-[#8E8E93] tracking-widest uppercase">{t('settlement_stats')}</span>
       </header>
 
       {/* Pie Chart Section */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider px-1">支出分類統計</h2>
-        <div className="ios-card p-6 min-h-[300px] flex flex-col items-center justify-center">
+        <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider px-1">{t('expense_categories')}</h2>
+        <div className="ios-card p-6 min-h-[240px] flex flex-col items-center justify-center">
           {categoryData.length > 0 ? (
             <>
-              <div className="w-full h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+            <div className="w-full relative mb-4 min-h-[160px]" ref={chartContainerRef}>
+              {categoryData.length > 0 && isReady && hasWidth ? (
+                <ResponsiveContainer width="100%" aspect={2.0}>
+                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                     <Pie
                       data={categoryData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
-                      paddingAngle={5}
+                      innerRadius={55}
+                      outerRadius={75}
+                      paddingAngle={3}
                       dataKey="value"
                     >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : null}
               </div>
-              <div className="grid grid-cols-3 gap-y-4 gap-x-6 mt-6 w-full">
+              <div className="grid grid-cols-3 gap-y-2 gap-x-4 mt-2 w-full">
                 {categoryData.map((cat, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
@@ -237,7 +263,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
           ) : (
             <div className="text-center text-slate-300 font-medium py-12">
               <TrendingUp size={48} className="mx-auto opacity-20 mb-4" />
-              尚無統計數據
+              {t('no_stats_data')}
             </div>
           )}
         </div>
@@ -245,7 +271,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
 
       {/* Member spending list with Accordion */}
       <section className="flex flex-col gap-2">
-        <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider px-1">個人應付總計</h2>
+        <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider px-1">{t('personal_payable')}</h2>
         <div className="ios-card">
           {memberSpending.map((m) => (
             <div key={m.id} className="border-b border-gray-100 last:border-none">
@@ -287,7 +313,9 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                             <div key={cat.id} className="bg-white/50 p-2 rounded-lg flex items-center justify-between border border-gray-100">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs">{cat.icon}</span>
-                                <span className="text-[10px] font-bold text-gray-500">{cat.label}</span>
+                                <span className="text-[10px] font-bold text-gray-500">
+                                  {i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`)}
+                                </span>
                               </div>
                               <span className="text-[11px] font-black text-black">${catTotal.toFixed(1)}</span>
                             </div>
@@ -304,7 +332,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                           }}
                           className="flex items-center justify-between w-full text-[10px] font-bold text-gray-400 uppercase tracking-tighter border-b border-gray-100 pb-1 outline-none"
                         >
-                          <span>消費明細</span>
+                          <span>{t('expense_details')}</span>
                           <ChevronDown size={14} className={cn("transition-transform", expandedDetailsId === m.id && "rotate-180")} />
                         </button>
                         
@@ -324,7 +352,12 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                                       <span className="font-bold text-gray-700">{exp.description}</span>
                                       <div className="flex items-center gap-1 text-[10px] text-gray-400">
                                         <span>{CATEGORIES.find(c => c.id === exp.category)?.icon}</span>
-                                        <span>{CATEGORIES.find(c => c.id === exp.category)?.label} | {new Date(exp.date).toLocaleDateString()}</span>
+                                        <span>
+                                          {i18n.language === 'zh' 
+                                            ? CATEGORIES.find(c => c.id === exp.category)?.label 
+                                            : t(`cat_${exp.category}`)
+                                          } | {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
+                                        </span>
                                       </div>
                                     </div>
                                     <span className="font-bold text-gray-500">
@@ -338,7 +371,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                       </div>
 
                       {expenses.filter(exp => exp.splits.some(s => s.memberId === m.id)).length === 0 && (
-                        <span className="text-[11px] text-gray-400 italic">尚無相關帳單</span>
+                        <span className="text-[11px] text-gray-400 italic">{t('no_related_bill')}</span>
                       )}
                     </div>
                   </motion.div>
@@ -352,7 +385,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
       {/* Optimized Settlement Section */}
       <section className="flex flex-col gap-3 pb-8">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">欠債細節</h2>
+          <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('debt_details')}</h2>
           <button 
             onClick={() => setShowConverter(!showConverter)}
             className={cn(
@@ -361,7 +394,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
             )}
           >
             <Globe size={12} />
-            <span>匯率轉換</span>
+            <span>{t('currency_conversion')}</span>
           </button>
         </div>
 
@@ -375,7 +408,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
             >
               <div className="ios-card p-4 bg-slate-50 border-none shadow-inner flex flex-col gap-4">
                 <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">目標幣別</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">{t('target_currency')}</label>
                   <div className="flex flex-col gap-3">
                     <button 
                       onClick={() => setIsPickerOpen(true)}
@@ -383,7 +416,10 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                     >
                       <div className="flex flex-col items-start text-left">
                         <span className="font-bold">
-                          {CURRENCIES.find(c => c.code === targetCurrency)?.name || (targetCurrency ? `常用幣別: ${targetCurrency}` : '點擊選擇約定幣別')}
+                          {(() => {
+                            const found = CURRENCIES.find(c => c.code === targetCurrency);
+                            return found ? t(found.name) : (targetCurrency ? `${t('common_currency')}: ${targetCurrency}` : t('select_currency'));
+                          })()}
                         </span>
                         <span className="text-[10px] uppercase font-bold text-[#8E8E93]">{targetCurrency || "-"}</span>
                       </div>
@@ -399,12 +435,12 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                         setTargetCurrency(code);
                         setCustomTargetCurrency('');
                       }}
-                      title="選擇目標幣別"
+                      title={t('select_currency')}
                     />
 
                     <input 
                       type="text" 
-                      placeholder="或手動輸入其它幣別代碼"
+                      placeholder={t('currency_placeholder')}
                       value={customTargetCurrency}
                       onChange={(e) => {
                         setCustomTargetCurrency(e.target.value.toUpperCase());
@@ -418,7 +454,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                 {(targetCurrency || customTargetCurrency) && (
                   <div className="flex flex-col gap-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
-                      輸入匯率 (1 {currentCurrency || '原始幣'} = ?)
+                      {t('exchange_rate_label', { currency: currentCurrency || '???' })}
                     </span>
                     <div className="relative flex items-center">
                       <div className="absolute left-3 text-slate-400">
@@ -429,12 +465,12 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                         step="0.0001"
                         value={exchangeRate}
                         onChange={(e) => setExchangeRate(e.target.value)}
-                        placeholder="請輸入匯率..."
+                        placeholder={t('exchange_rate_placeholder')}
                         className="w-full bg-white border border-slate-100 py-2.5 pl-10 pr-4 rounded-xl text-[14px] font-bold outline-none focus:ring-1 focus:ring-[#4285F4]"
                       />
                     </div>
                     <span className="text-[10px] text-slate-400 italic px-1">
-                      顯示名稱：{customTargetCurrency || targetCurrency}
+                      {t('display_name')} {customTargetCurrency || targetCurrency}
                     </span>
                   </div>
                 )}
@@ -462,10 +498,10 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
           </div>
         ) : (
           <div className="ios-card py-10 text-center">
-            <span className="text-sm font-medium text-slate-300">所有債務已清空，目前很平衡！</span>
+            <span className="text-sm font-medium text-slate-300">{t('debts_cleared')}</span>
           </div>
         )}
       </section>
-    </div>
+    </motion.div>
   );
 }

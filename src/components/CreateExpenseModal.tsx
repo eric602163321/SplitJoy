@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { Member, Expense, SplitType, SplitDetail } from '../types';
 import { CATEGORIES } from '../constants';
 import { cn } from '../lib/utils';
@@ -14,6 +15,7 @@ interface CreateExpenseModalProps {
 }
 
 export default function CreateExpenseModal({ isOpen, onClose, members, onSave }: CreateExpenseModalProps) {
+  const { t, i18n } = useTranslation();
   const [totalAmount, setTotalAmount] = useState<string>('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -38,16 +40,12 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
       setNotes('');
       setCategory(CATEGORIES[0].id);
       
-      // Auto-focus amount field after modal animation
-      // On iOS, focus and keyboard popup are strict. 
-      // 500ms delay helps ensure the element is interactive.
       const timer = setTimeout(() => {
         if (amountRef.current) {
           amountRef.current.focus();
         }
       }, 500);
 
-      // Initialize custom splits to '1' for all members to default to 1:1 ratio
       const initialSplits: Record<string, string> = {};
       members.forEach(m => {
         initialSplits[m.id] = '1';
@@ -64,7 +62,6 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
   }, [isOpen, members]);
 
   const handleAmountChange = (val: string) => {
-    // Allow empty string, numbers, and one decimal point
     if (val === '' || /^\d*\.?\d*$/.test(val)) {
       setTotalAmount(val);
     }
@@ -155,12 +152,11 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className="relative bg-[var(--color-ios-bg)] w-full max-w-lg rounded-t-[24px] sm:rounded-[24px] shadow-2xl max-h-[90vh] overflow-y-auto"
       >
-        {/* Drag Handle */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-300 rounded-full z-[110]" />
 
         <div className="sticky top-0 bg-[var(--color-ios-bg)]/80 backdrop-blur-md px-6 py-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] z-[100]">
-          <button onClick={onClose} className="text-[var(--color-ios-blue)] text-[15px] font-medium">取消</button>
-          <span className="text-[17px] font-bold">新增支出</span>
+          <button onClick={onClose} className="text-[var(--color-ios-blue)] text-[15px] font-medium">{t('cancel')}</button>
+          <span className="text-[17px] font-bold">{t('add_expense')}</span>
           <button 
             onClick={handleSave} 
             disabled={!isValid}
@@ -169,14 +165,13 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
               !isValid && "opacity-30"
             )}
           >
-            儲存
+            {t('save')}
           </button>
         </div>
 
         <div className="p-6 flex flex-col gap-6">
-          {/* Amount Section */}
           <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">總金額</span>
+            <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">{t('amount')}</span>
             <div className="ios-card px-4 py-2 flex items-center">
               <span className="text-2xl font-bold mr-2 text-slate-400">$</span>
               <input 
@@ -193,20 +188,19 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
             </div>
           </div>
 
-          {/* Description & Category */}
           <div className="grid grid-cols-1 gap-6">
             <div className="flex flex-col gap-2">
-              <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">項目與類別</span>
+              <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">{t('highest_category')}</span>
               <div className="ios-card flex flex-col">
                 <input 
                   type="text" 
-                  placeholder="支出項目 (例如: 午餐)"
+                  placeholder={t('expense_item_placeholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="ios-grouped-item w-full outline-none text-[15px] border-b border-gray-100" 
                 />
                 <textarea 
-                  placeholder="備註 (選填)"
+                  placeholder={t('notes_placeholder')}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full p-4 outline-none text-[14px] text-gray-500 bg-white min-h-[80px] border-b border-gray-100"
@@ -222,7 +216,9 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
                       )}
                     >
                       <span className="text-xl">{cat.icon}</span>
-                      <span className="text-[10px] font-bold">{cat.label}</span>
+                      <span className="text-[10px] font-bold">
+                        {i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`)}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -230,10 +226,9 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
             </div>
           </div>
 
-          {/* Payer Section - Only show if multiple members */}
           {members.length > 1 && (
             <div className="flex flex-col gap-2">
-              <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">誰先代墊了這筆錢？</span>
+              <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">{t('who_paid')}</span>
               <div className="ios-card p-3 flex flex-wrap gap-2">
                 {members.map(m => (
                   <button
@@ -256,7 +251,6 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
             </div>
           )}
 
-          {/* Split Logic - Only show if multiple members */}
           {members.length > 1 && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center px-1">
@@ -264,11 +258,11 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
                   <button 
                     onClick={() => setSplitType('equal')}
                     className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'equal' ? "bg-white shadow-sm text-black" : "text-slate-400")}
-                  >大家平分</button>
+                  >{t('all_split')}</button>
                   <button 
                     onClick={() => setSplitType('custom')}
                     className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'custom' ? "bg-white shadow-sm text-black" : "text-slate-400")}
-                  >自訂比例</button>
+                  >{t('custom_ratio')}</button>
                 </div>
               </div>
 
@@ -300,7 +294,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave }:
                         {splitType === 'custom' && (
                           <input 
                             type="number"
-                            placeholder="比例"
+                            placeholder={t('ratio_placeholder')}
                             disabled={!isSelected}
                             value={customSplits[m.id] || ''}
                             onChange={(e) => handleCustomSplitChange(m.id, e.target.value)}

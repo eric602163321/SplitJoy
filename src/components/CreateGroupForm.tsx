@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ArrowLeft } from 'lucide-react';
 import { motion, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { Group } from '../types';
 import { cn } from '../lib/utils';
 import { CURRENCIES } from '../constants';
@@ -12,6 +13,7 @@ interface CreateGroupFormProps {
 }
 
 export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFormProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('TWD');
   const [customCurrency, setCustomCurrency] = useState('');
@@ -20,8 +22,6 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
   const dragControls = useDragControls();
 
   useEffect(() => {
-    // On iOS, focus and keyboard popup are strict. 
-    // 500ms delay helps ensure the element is interactive and layout is stable.
     const timer = setTimeout(() => {
       if (nameInputRef.current) {
         nameInputRef.current.focus();
@@ -52,13 +52,11 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={{ left: 0, right: 0.15 }}
       onPointerDown={(e) => {
-        // Start drag ONLY if within 40px of the edge
         if (e.clientX < 40) {
           dragControls.start(e);
         }
       }}
       onDragEnd={(_, info) => {
-        // iOS classic: swipe right from left-ish area to go back
         if (info.offset.x > 80 && info.velocity.x > 300) {
           onCancel();
         }
@@ -69,7 +67,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
         <button onClick={onCancel} className="text-[#4285F4]">
           <ArrowLeft size={24} />
         </button>
-        <h2 className="text-[14px] font-bold text-[#8E8E93] uppercase tracking-wider">建立新團體</h2>
+        <h2 className="text-[14px] font-bold text-[#8E8E93] uppercase tracking-wider">{t('create_group')}</h2>
       </div>
 
       <div className="ios-card p-6 flex flex-col gap-6">
@@ -77,7 +75,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
           <input 
             ref={nameInputRef}
             type="text" 
-            placeholder="輸入團體名稱（如：眠月線登山團）"
+            placeholder={t('group_name_placeholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full bg-[#F2F2F7] border-none py-3 px-4 rounded-2xl text-[15px] placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all"
@@ -85,14 +83,19 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
         </div>
 
         <div className="flex flex-col gap-3">
-          <label className="text-[14px] font-bold text-[#8E8E93] px-1">預設幣別</label>
+          <label className="text-[14px] font-bold text-[#8E8E93] px-1">{t('default_currency')}</label>
           <div className="relative">
             <button 
               onClick={() => setShowCurrencyPicker(true)}
               className="w-full bg-[#F2F2F7] flex items-center justify-between py-3 px-4 rounded-2xl text-[15px] text-black outline-none active:bg-gray-200 transition-colors"
             >
               <div className="flex flex-col items-start">
-                <span className="font-bold">{CURRENCIES.find(c => c.code === currency)?.name || currency}</span>
+                <span className="font-bold">
+                  {(() => {
+                    const found = CURRENCIES.find(c => c.code === currency);
+                    return found ? t(found.name) : currency;
+                  })()}
+                </span>
                 <span className="text-[10px] uppercase font-bold text-[#8E8E93]">{currency}</span>
               </div>
               <ChevronDown size={18} className="text-[#C7C7CC]" />
@@ -106,12 +109,13 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
                 setCurrency(code);
                 setCustomCurrency('');
               }}
+              title={t('target_currency')}
             />
           </div>
 
           <input 
             type="text" 
-            placeholder="或自行輸入幣別代碼（如 THB）"
+            placeholder={t('custom_currency_placeholder')}
             value={customCurrency}
             onChange={(e) => setCustomCurrency(e.target.value)}
             className="w-full bg-[#F2F2F7] border-none py-3 px-4 rounded-2xl text-[15px] placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all"
@@ -123,7 +127,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
             onClick={onCancel}
             className="py-3.5 rounded-2xl font-bold text-[17px] bg-[#F2F2F7] text-black active:opacity-70 transition-all"
           >
-            取消
+            {t('cancel')}
           </button>
           <button 
             onClick={handleCreate}
@@ -133,7 +137,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
               name.trim() ? "bg-[#4285F4]" : "bg-[#A0CFFF] opacity-80 cursor-not-allowed"
             )}
           >
-            建立
+            {t('create')}
           </button>
         </div>
       </div>

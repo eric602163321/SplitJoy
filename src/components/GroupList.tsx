@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, Trash2, Users, Calendar } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Group } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -11,28 +12,34 @@ interface GroupListProps {
 }
 
 export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStartCreate }: GroupListProps) {
+  const { t, i18n } = useTranslation();
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-[14px] font-bold text-[#8E8E93] uppercase tracking-wider">我的團體</h2>
+        <h2 className="text-[14px] font-bold text-[#8E8E93] uppercase tracking-wider">{t('my_groups')}</h2>
         <button 
           onClick={onStartCreate}
           className="text-sm font-bold text-[#4285F4] active:opacity-50"
         >
-          建立
+          {t('create')}
         </button>
       </div>
 
       <AnimatePresence mode="popLayout">
         {groups.length === 0 ? (
           <div className="ios-card flex flex-col items-center justify-center py-16 px-6 text-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-[#F2F2F7] flex items-center justify-center">
-              <Users size={32} className="text-[#A0CFFF]" />
+            <div className="w-16 h-16 rounded-full bg-[#F2F2F7] flex items-center justify-center overflow-hidden p-3">
+              <img 
+                src="https://img.icons8.com/fluency/144/wallet.png" 
+                alt="Logo" 
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="font-bold text-[17px] text-black">尚無團體</span>
+              <span className="font-bold text-[17px] text-black">{t('no_groups')}</span>
               <span className="text-sm text-[#8E8E93] leading-relaxed">
-                點查右上方「建立」來開始與朋友們分帳
+                {t('click_create_to_start')}
               </span>
             </div>
           </div>
@@ -58,13 +65,13 @@ export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStar
                     <div className="flex flex-col gap-0.5">
                       <span className="font-bold text-[17px] text-black">{group.name}</span>
                       <div className="flex items-center gap-2 text-[12px] text-[#8E8E93] font-medium">
-                        <span>{group.members.length} 位成員</span>
+                        <span>{t('members_count', { count: group.members.length })}</span>
                         <span>·</span>
                         <span>{group.currency}</span>
                         <span>·</span>
                         <div className="flex items-center gap-1">
                           <Calendar size={12} />
-                          <span>{new Date(group.createdAt).toLocaleDateString()}</span>
+                          <span>{new Date(group.createdAt).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}</span>
                         </div>
                       </div>
                     </div>

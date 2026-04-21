@@ -19,12 +19,14 @@ interface DataContextType {
   authError: string | null;
   bgTexture: string;
   fontSize: 'small' | 'medium' | 'large';
+  language: string;
   
   // Actions
   handleLogin: () => Promise<void>;
   handleLogout: () => Promise<void>;
   setBgTexture: (texture: string) => void;
   setFontSize: (size: 'small' | 'medium' | 'large') => void;
+  setLanguage: (lang: string) => void;
   addPersonalExpense: (expense: Expense) => void;
   setPersonalExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
   addMember: (member: Member) => void;
@@ -61,6 +63,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [fontSize, setFontSizeState] = useState<'small' | 'medium' | 'large'>(() => {
     return (localStorage.getItem('splitit_font_size') as 'small' | 'medium' | 'large') || 'small';
+  });
+  const [language, setLanguageState] = useState(() => {
+    return localStorage.getItem('i18nextLng') || 'zh';
   });
 
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -166,23 +171,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [members, user, hasLoadedPersonalFromCloud]);
 
-  const setBgTexture = (texture: string) => {
-    setBgTextureState(texture);
-    localStorage.setItem('splitit_bg_texture', texture);
-    updateTheme(texture, fontSize);
-  };
-
-  const setFontSize = (size: 'small' | 'medium' | 'large') => {
-    setFontSizeState(size);
-    localStorage.setItem('splitit_font_size', size);
-    updateTheme(bgTexture, size);
-  };
-
-  const updateTheme = (texture: string, size: 'small' | 'medium' | 'large') => {
+  const updateTheme = React.useCallback((textureValue: string, sizeValue: 'small' | 'medium' | 'large') => {
     const root = document.documentElement;
     
     // Background Texture
-    switch (texture) {
+    switch (textureValue) {
       case 'soft-blue':
         root.style.setProperty('--color-ios-bg', '#F5F9FF');
         break;
@@ -204,7 +197,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Font Size
-    switch (size) {
+    switch (sizeValue) {
       case 'medium':
         root.style.setProperty('--app-font-scale', '1.1');
         break;
@@ -214,11 +207,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       default: // small
         root.style.setProperty('--app-font-scale', '1.0');
     }
+  }, []);
+
+  const setBgTexture = (texture: string) => {
+    setBgTextureState(texture);
+    localStorage.setItem('splitit_bg_texture', texture);
+    updateTheme(texture, fontSize);
   };
+
+  const setFontSize = (size: 'small' | 'medium' | 'large') => {
+    setFontSizeState(size);
+    localStorage.setItem('splitit_font_size', size);
+    updateTheme(bgTexture, size);
+  };
+
+  const setLanguage = React.useCallback((lang: string) => {
+    import('../i18n').then(i18n => {
+      i18n.default.changeLanguage(lang);
+      setLanguageState(lang);
+    });
+  }, []);
 
   useEffect(() => {
     updateTheme(bgTexture, fontSize);
-  }, []);
+  }, [bgTexture, fontSize, updateTheme]);
 
   const handleLogin = async () => {
     setAuthError(null);
@@ -283,7 +295,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isInitialSyncComplete: hasLoadedPersonalFromCloud && hasLoadedGroupsFromCloud,
       authError, handleLogin, handleLogout, addPersonalExpense, setPersonalExpenses,
       addMember, removeMember, addGroup, updateGroup, removeGroup,
-      bgTexture, setBgTexture, fontSize, setFontSize
+      bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage
     }}>
       {children}
     </DataContext.Provider>

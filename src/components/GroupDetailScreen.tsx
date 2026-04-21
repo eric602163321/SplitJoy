@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Expense, Group } from '../types';
 import CreateExpenseModal from './CreateExpenseModal';
@@ -16,6 +17,7 @@ interface GroupDetailScreenProps {
 }
 
 const SwipeableExpenseItem: React.FC<{ exp: Expense; group: Group; onDelete: (id: string) => void }> = ({ exp, group, onDelete }) => {
+  const { t, i18n } = useTranslation();
   const x = useMotionValue(0);
   // Transform x position to background opacity and button scale
   const opacity = useTransform(x, [0, 60], [0, 1]);
@@ -55,7 +57,7 @@ const SwipeableExpenseItem: React.FC<{ exp: Expense; group: Group; onDelete: (id
                   {AVATARS.find(a => a.id === group.members.find(m => m.id === exp.payerId)?.avatar)?.emoji || "👤"}
                 </span>
                 <span>
-                  {group.members.find(m => m.id === exp.payerId)?.name} 付款 · {new Date(exp.date).toLocaleDateString()}
+                  {group.members.find(m => m.id === exp.payerId)?.name} {t('paid')} · {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
                 </span>
               </div>
             </div>
@@ -73,10 +75,21 @@ const SwipeableExpenseItem: React.FC<{ exp: Expense; group: Group; onDelete: (id
 }
 
 export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMembers }: GroupDetailScreenProps) {
+  const { t, i18n } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManagingMembers, setIsManagingMembers] = useState(false);
   const [currentView, setCurrentView] = useState<'details' | 'settlement'>('details');
   const dragControls = useDragControls();
+
+  const isDeepView = currentView !== 'details';
+
+  const handleBack = () => {
+    if (currentView !== 'details') {
+      setCurrentView('details');
+    } else {
+      onBack();
+    }
+  };
 
   const toggleMemberInGroup = (member: Member) => {
     const isAlreadyInGroup = group.members.some(m => m.id === member.id);
@@ -126,7 +139,8 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
             setCurrentView('details');
           }
         }}
-        className="flex flex-col gap-2 min-h-screen bg-transparent"
+        className="flex flex-col gap-2 min-h-screen bg-transparent touch-action-none sm:touch-pan-y"
+        style={{ touchAction: 'pan-y' }}
       >
         <header className="px-1 pt-8 flex items-center gap-4">
           <button 
@@ -134,7 +148,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
             className="flex items-center gap-2 text-[#4285F4] font-bold active:scale-95 transition-all"
           >
             <ArrowLeft size={24} strokeWidth={2.5} />
-            <span className="text-[15px]">返回帳單紀錄</span>
+            <span className="text-[15px]">{t('back_to_expenses')}</span>
           </button>
         </header>
 
@@ -150,13 +164,13 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
 
   return (
     <motion.div 
-      drag="x"
+      drag={isDeepView ? false : "x"}
       dragControls={dragControls}
       dragListener={false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={{ left: 0, right: 0.15 }}
       onPointerDown={(e) => {
-        if (e.clientX < 40) {
+        if (e.clientX < 40 && !isDeepView) {
           dragControls.start(e);
         }
       }}
@@ -165,18 +179,35 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
           onBack();
         }
       }}
-      className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent"
+      className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent touch-action-none sm:touch-pan-y"
+      style={{ touchAction: 'pan-y' }}
     >
-      <header className="px-1 pt-8 flex items-center gap-4">
-        <button onClick={onBack} className="text-[#8E8E93]">
-          <ArrowLeft size={28} strokeWidth={2.5} />
-        </button>
-        <div className="flex flex-col gap-0.5">
-          <h1 className="text-3xl font-extrabold text-black tracking-tight">{group.name}</h1>
-          <span className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wide">
-            {group.members.length} 位成員 · {group.currency}
-          </span>
+      <header className="px-1 pt-8 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleBack}
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm active:scale-95 transition-all"
+          >
+            <ArrowLeft size={20} className="text-black" />
+          </button>
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-extrabold text-black tracking-tight">{group.name}</h1>
+            <span className="text-[10px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">
+              {currentView === 'details' ? t('group_expenses') : t('settlement_stats')}
+            </span>
+          </div>
         </div>
+        {currentView === 'details' && (
+          <button 
+            onClick={() => setIsManagingMembers(!isManagingMembers)}
+            className={cn(
+              "w-10 h-10 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all",
+              isManagingMembers ? "bg-[#EBF4FF] text-[#4285F4]" : "bg-white text-gray-500"
+            )}
+          >
+            <UserPlus size={20} />
+          </button>
+        )}
       </header>
 
       <div className="flex flex-col gap-8">
@@ -186,20 +217,11 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
             <div className="p-5 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <h2 className="text-[17px] font-bold text-black tracking-tight">團體成員</h2>
+                  <h2 className="text-[17px] font-bold text-black tracking-tight">{t('group_members')}</h2>
+                  <span className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-wide">
+                    {t('members_count', { count: group.members.length })} · {group.currency}
+                  </span>
                 </div>
-                <button 
-                  onClick={() => setIsManagingMembers(!isManagingMembers)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-bold transition-all",
-                    isManagingMembers 
-                      ? "bg-[#EBF4FF] text-[#4285F4]" 
-                      : "border border-[#4285F4] text-[#4285F4]"
-                  )}
-                >
-                  <UserPlus size={16} strokeWidth={2.5} />
-                  <span>管理</span>
-                </button>
               </div>
 
               <div className="flex flex-col gap-1">
@@ -214,7 +236,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                     >
                       {allMembers.length === 0 ? (
                         <div className="py-4 px-2 text-center text-xs text-[#8E8E93]">
-                          請先在外面新增全域成員名單
+                          {t('add_global_members_first')}
                         </div>
                       ) : (
                         allMembers.map((member) => {
@@ -260,7 +282,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                       className="flex flex-wrap gap-2 pt-1"
                     >
                       {group.members.length === 0 ? (
-                        <span className="text-[12px] text-[#8E8E93] font-medium px-1">請先選擇成員</span>
+                        <span className="text-[12px] text-[#8E8E93] font-medium px-1">{t('select_members_first')}</span>
                       ) : (
                         group.members.map((member) => (
                           <motion.div 
@@ -289,7 +311,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         {/* Expenses Section */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">群組帳單紀錄</h2>
+            <h2 className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">{t('group_expenses')}</h2>
           </div>
 
           <div className="flex gap-2 px-1">
@@ -299,7 +321,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
               className="flex-[2.5] h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
             >
               <Plus size={18} strokeWidth={2.5} />
-              <span>新增帳單</span>
+              <span>{t('add_bill')}</span>
             </button>
             <button 
               disabled={group.expenses.length === 0}
@@ -307,7 +329,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
               className="flex-1 h-11 bg-[#F2F2F7] text-[#4285F4] rounded-xl font-bold text-[14px] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
             >
               <Calculator size={18} strokeWidth={2.5} />
-              <span>結算</span>
+              <span>{t('settlement')}</span>
             </button>
           </div>
 
@@ -318,9 +340,9 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                   <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-1">
                     <ReceiptText size={24} className="text-gray-200" />
                   </div>
-                  <span className="font-bold text-sm text-black">尚無帳單</span>
+                  <span className="font-bold text-sm text-black">{t('no_bill')}</span>
                   <span className="text-[12px] text-[#8E8E93] leading-relaxed">
-                    {group.members.length > 0 ? "點擊「新增帳單」開始分錢" : "請先新增成員"}
+                    {group.members.length > 0 ? t('start_splitting') : t('add_members_first')}
                   </span>
                 </div>
               ) : (

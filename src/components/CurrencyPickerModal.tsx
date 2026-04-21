@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { CURRENCIES } from '../constants';
 import { cn } from '../lib/utils';
 import { X } from 'lucide-react';
@@ -19,8 +20,10 @@ export default function CurrencyPickerModal({
   selectedCode, 
   onSelect,
   excludeCode,
-  title = "選擇幣別"
+  title
 }: CurrencyPickerModalProps) {
+  const { t } = useTranslation();
+  const displayTitle = title || t('select_currency_title');
   const filteredCurrencies = CURRENCIES.filter(c => c.code !== excludeCode);
 
   return (
@@ -54,7 +57,7 @@ export default function CurrencyPickerModal({
             <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-300 rounded-full z-[110]" />
 
             <div className="p-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] bg-white/80 backdrop-blur-md">
-              <span className="text-[17px] font-bold ml-2">{title}</span>
+              <span className="text-[17px] font-bold ml-2">{displayTitle}</span>
               <button 
                 onClick={onClose}
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:scale-90 transition-all"
@@ -85,7 +88,7 @@ export default function CurrencyPickerModal({
                         </div>
                         <div className="flex flex-col items-start">
                           <span className={cn("text-[15px] font-bold", isSelected ? "text-[var(--color-ios-blue)]" : "text-black")}>
-                            {c.name}
+                            {t(c.name)}
                           </span>
                           <span className="text-[11px] font-bold text-gray-400 uppercase">{c.code}</span>
                         </div>

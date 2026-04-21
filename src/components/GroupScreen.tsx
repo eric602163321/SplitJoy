@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Group } from '../types';
 import { cn } from '../lib/utils';
@@ -31,6 +32,7 @@ export default function GroupScreen({
   onAddMember,
   onRemoveMember
 }: GroupScreenProps) {
+  const { t } = useTranslation();
   const [isCreating, setIsCreating] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [name, setName] = useState('');
@@ -43,9 +45,6 @@ export default function GroupScreen({
 
   useEffect(() => {
     if (isAddingMember) {
-      // Small delay to allow AnimatePresence height animation to start
-      // On iOS, focus and keyboard popup are strict. 
-      // 500ms delay helps ensure the element is interactive and layout is stable.
       const timer = setTimeout(() => {
         if (memberInputRef.current) {
           memberInputRef.current.focus();
@@ -66,7 +65,6 @@ export default function GroupScreen({
     });
     setName('');
     
-    // Pick a random avatar for the next member
     const randomIndex = Math.floor(Math.random() * AVATARS.length);
     setSelectedAvatarId(AVATARS[randomIndex].id);
   };
@@ -97,22 +95,21 @@ export default function GroupScreen({
   return (
     <div className="flex flex-col gap-6 pb-12">
       <header className="px-1 pt-8 flex flex-col gap-1">
-        <span className="text-[10px] font-bold text-[#8E8E93] tracking-widest uppercase">OVERVIEW</span>
-        <h1 className="text-3xl font-extrabold text-black tracking-tight">團體清單</h1>
+        <span className="text-[10px] font-bold text-[#8E8E93] tracking-widest uppercase">{t('overview')}</span>
+        <h1 className="text-3xl font-extrabold text-black tracking-tight">{t('group_list')}</h1>
       </header>
 
-      {/* Restore Member List Section above Group List */}
       <section className="flex flex-col gap-2">
         <div className="ios-card overflow-hidden">
           <div className="p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-[17px] font-bold text-black tracking-tight">成員名單</h2>
+              <h2 className="text-[17px] font-bold text-black tracking-tight">{t('members')}</h2>
               <button 
                 onClick={() => setIsAddingMember(!isAddingMember)}
                 className="flex items-center gap-1 text-[15px] font-bold text-[#4285F4] active:opacity-50"
               >
                 <Plus size={18} strokeWidth={3} />
-                <span>新增</span>
+                <span>{t('add_member')}</span>
               </button>
             </div>
 
@@ -130,7 +127,7 @@ export default function GroupScreen({
                       ref={memberInputRef}
                       type="text" 
                       autoFocus
-                      placeholder="輸入名字"
+                      placeholder={t('name_placeholder')}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       className="w-full bg-[#F2F2F7] border-none py-2.5 px-4 rounded-2xl text-[14px] placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all"
@@ -145,7 +142,7 @@ export default function GroupScreen({
                           : "bg-[#A0CFFF] text-white opacity-80 cursor-not-allowed"
                       )}
                     >
-                      加入成員
+                      {t('add_btn')}
                     </button>
                   </div>
                 </motion.div>
