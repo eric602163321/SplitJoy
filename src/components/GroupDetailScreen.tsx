@@ -6,119 +6,16 @@ import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Expense, Group } from '../types';
 import CreateExpenseModal from './CreateExpenseModal';
 import StatsScreen from './StatsScreen';
+import SwipeableExpenseItem from './SwipeableExpenseItem';
 import { CATEGORIES } from '../constants';
-import { cn } from '../lib/utils';
+import { ScreenHeader, SectionTitle, EmptyState } from './SharedUI';
+import { cn, getCategoryById } from '../lib/utils';
 
 interface GroupDetailScreenProps {
   group: Group;
   onUpdateGroup: (group: Group) => void;
   onBack: () => void;
   allMembers: Member[];
-}
-
-const SwipeableExpenseItem: React.FC<{ 
-  exp: Expense; 
-  group: Group; 
-  onDelete: (id: string) => void;
-  onEdit: (exp: Expense) => void;
-}> = ({ exp, group, onDelete, onEdit }) => {
-  const { t, i18n } = useTranslation();
-  const x = useMotionValue(0);
-  
-  // Right swipe (Delete)
-  const deleteOpacity = useTransform(x, [0, 60], [0, 1]);
-  const deleteScale = useTransform(x, [0, 60], [0.5, 1]);
-  
-  // Left swipe (Edit)
-  const editOpacity = useTransform(x, [0, -60], [0, 1]);
-  const editScale = useTransform(x, [0, -60], [0.5, 1]);
-
-  const handleDelete = () => {
-    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
-      onDelete(exp.id);
-    });
-  };
-
-  const handleEdit = () => {
-    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
-      onEdit(exp);
-    });
-  };
-
-  return (
-    <div className="relative overflow-hidden bg-white border-b border-gray-50 last:border-none">
-      {/* Delete Background (Visible when swiping right) */}
-      <motion.div 
-        style={{ opacity: deleteOpacity }}
-        className="absolute inset-y-0 left-0 w-20 bg-red-500 flex items-center justify-center p-4"
-      >
-        <motion.button 
-          style={{ scale: deleteScale }}
-          onClick={handleDelete}
-          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
-        >
-          <X size={20} strokeWidth={3} />
-        </motion.button>
-      </motion.div>
-
-      {/* Edit Background (Left Swipe) */}
-      <motion.div 
-        style={{ opacity: editOpacity }}
-        className="absolute inset-y-0 right-0 w-20 bg-[#4285F4] flex items-center justify-center p-4"
-      >
-        <motion.button 
-          style={{ scale: editScale }}
-          onClick={handleEdit}
-          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
-        >
-          <Pencil size={20} strokeWidth={2.5} />
-        </motion.button>
-      </motion.div>
-
-      {/* Main Content */}
-      <motion.div
-        style={{ x }}
-        drag="x"
-        dragConstraints={{ left: -80, right: 80 }}
-        dragElastic={0.1}
-        onDragEnd={(_, info) => {
-          if (info.offset.x > 40 || info.velocity.x > 300) {
-            animate(x, 80, { type: 'spring', bounce: 0.3, duration: 0.4 });
-          } else if (info.offset.x < -40 || info.velocity.x < -300) {
-            animate(x, -80, { type: 'spring', bounce: 0.3, duration: 0.4 });
-          } else {
-            animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 });
-          }
-        }}
-        className="bg-white relative z-10"
-      >
-        <div className="ios-grouped-item cursor-grab active:cursor-grabbing border-none">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">
-              {(CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.icon}
-            </span>
-            <div className="flex flex-col">
-              <span className="font-bold text-[15px]">{exp.description}</span>
-              <div className="flex items-center gap-1 text-[10px] text-[#8E8E93]">
-                <span>
-                  {AVATARS.find(a => a.id === group.members.find(m => m.id === exp.payerId)?.avatar)?.emoji || "👤"}
-                </span>
-                <span>
-                  {group.members.find(m => m.id === exp.payerId)?.name} {t('paid')} · {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end">
-            <span className="font-black text-[15px] underline decoration-[#4285F4] decoration-2 underline-offset-4">
-              ${exp.totalAmount}
-            </span>
-            <span className="text-[10px] text-[#8E8E93] font-bold">{group.currency}</span>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
 }
 
 export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMembers }: GroupDetailScreenProps) {
@@ -244,33 +141,31 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent touch-action-none sm:touch-pan-y"
       style={{ touchAction: 'pan-y' }}
     >
-      <header className="px-1 pt-8 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <ScreenHeader 
+        title={group.name}
+        subtitle={currentView === 'details' ? t('group_expenses') : t('settlement_stats')}
+        leftAction={
           <button 
             onClick={handleBack}
             className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm active:scale-95 transition-all"
           >
             <ArrowLeft size={20} className="text-black" />
           </button>
-          <div className="flex flex-col">
-            <h1 className="text-2xl font-extrabold text-black tracking-tight">{group.name}</h1>
-            <span className="text-[10px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">
-              {currentView === 'details' ? t('group_expenses') : t('settlement_stats')}
-            </span>
-          </div>
-        </div>
-        {currentView === 'details' && (
-          <button 
-            onClick={() => setIsManagingMembers(!isManagingMembers)}
-            className={cn(
-              "w-10 h-10 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all",
-              isManagingMembers ? "bg-[#EBF4FF] text-[#4285F4]" : "bg-white text-gray-500"
-            )}
-          >
-            <UserPlus size={20} />
-          </button>
-        )}
-      </header>
+        }
+        rightAction={
+          currentView === 'details' && (
+            <button 
+              onClick={() => setIsManagingMembers(!isManagingMembers)}
+              className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all",
+                isManagingMembers ? "bg-[#EBF4FF] text-[#4285F4]" : "bg-white text-gray-500"
+              )}
+            >
+              <UserPlus size={20} />
+            </button>
+          )
+        }
+      />
 
       <div className="flex flex-col gap-8">
         {/* Member List Card */}
@@ -372,9 +267,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
 
         {/* Expenses Section */}
         <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">{t('group_expenses')}</h2>
-          </div>
+          <SectionTitle title={t('group_expenses')} />
 
           <div className="flex gap-2 px-1">
             <button 
@@ -398,24 +291,24 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
           <div className="ios-card overflow-hidden">
             <AnimatePresence mode="popLayout" initial={false}>
               {group.expenses.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-6 text-center gap-2">
-                  <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-1">
-                    <ReceiptText size={24} className="text-gray-200" />
-                  </div>
-                  <span className="font-bold text-sm text-black">{t('no_bill')}</span>
-                  <span className="text-[12px] text-[#8E8E93] leading-relaxed">
-                    {group.members.length > 0 ? t('start_splitting') : t('add_members_first')}
-                  </span>
-                </div>
+                <EmptyState 
+                  icon={ReceiptText}
+                  title={t('no_bill')}
+                  description={group.members.length > 0 ? t('start_splitting') : t('add_members_first')}
+                  className="shadow-none"
+                />
               ) : (
                 <div className="flex flex-col divide-y divide-gray-50">
                   {group.expenses.slice().reverse().map((exp) => (
                     <SwipeableExpenseItem 
                       key={exp.id} 
                       exp={exp} 
-                      group={group} 
                       onDelete={handleDeleteExpense}
                       onEdit={handleEditExpense}
+                      currency={group.currency}
+                      showPayer={true}
+                      payerEmoji={AVATARS.find(a => a.id === group.members.find(m => m.id === exp.payerId)?.avatar)?.emoji || "👤"}
+                      payerName={group.members.find(m => m.id === exp.payerId)?.name || ""}
                     />
                   ))}
                 </div>

@@ -2,128 +2,14 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, Sparkles, ChevronRight, BarChart3, ArrowLeft, TrendingUp, ChevronDown, Trash2, Pencil } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Expense, Member } from '../types';
 import { CATEGORIES, RETRO_COLORS } from '../constants';
 import { AVATARS } from './AvatarGrid';
 import CreateExpenseModal from './CreateExpenseModal';
-import { cn } from '../lib/utils';
-
-const SwipeableExpenseItem: React.FC<{
-  exp: Expense;
-  onDelete: (id: string) => void;
-  onEdit?: (exp: Expense) => void;
-}> = ({ exp, onDelete, onEdit }) => {
-  const { i18n } = useTranslation();
-  const x = useMotionValue(0);
-  
-  // Right swipe (Delete)
-  const deleteOpacity = useTransform(x, [0, 60], [0, 1]);
-  const deleteScale = useTransform(x, [0, 60], [0.5, 1]);
-  
-  // Left swipe (Edit)
-  const editOpacity = useTransform(x, [0, -60], [0, 1]);
-  const editScale = useTransform(x, [0, -60], [0.5, 1]);
-
-  const handleDelete = () => {
-    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
-      onDelete(exp.id);
-    });
-  };
-
-  const handleEdit = () => {
-    if (onEdit) {
-      animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
-        onEdit(exp);
-      });
-    }
-  };
-
-  return (
-    <motion.div 
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      className="relative overflow-hidden ios-card shadow-none border border-gray-100"
-    >
-      {/* Delete Background (Right Swipe) */}
-      <motion.div 
-        style={{ opacity: deleteOpacity }}
-        className="absolute inset-y-0 left-0 w-20 bg-red-500 flex items-center justify-center p-4"
-      >
-        <motion.button 
-          style={{ scale: deleteScale }}
-          onClick={handleDelete}
-          className="w-full h-full flex items-center justify-center text-white"
-        >
-          <Trash2 size={20} strokeWidth={2.5} />
-        </motion.button>
-      </motion.div>
-
-      {/* Edit Background (Left Swipe) */}
-      <motion.div 
-        style={{ opacity: editOpacity }}
-        className="absolute inset-y-0 right-0 w-20 bg-[#4285F4] flex items-center justify-center p-4"
-      >
-        <motion.button 
-          style={{ scale: editScale }}
-          onClick={handleEdit}
-          className="w-full h-full flex items-center justify-center text-white"
-        >
-          <Pencil size={20} strokeWidth={2.5} />
-        </motion.button>
-      </motion.div>
-
-      {/* Main Content */}
-      <motion.div
-        style={{ x }}
-        drag="x"
-        dragConstraints={{ left: -80, right: 80 }}
-        dragElastic={0.1}
-        onDragEnd={(_, info) => {
-          if (info.offset.x > 40 || info.velocity.x > 300) {
-            animate(x, 80, { type: 'spring', bounce: 0.3, duration: 0.4 });
-          } else if (info.offset.x < -40 || info.velocity.x < -300) {
-            animate(x, -80, { type: 'spring', bounce: 0.3, duration: 0.4 });
-          } else {
-            animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 });
-          }
-        }}
-        className="bg-white p-4 flex items-center justify-between relative z-10 active:bg-gray-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div 
-            className="w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm"
-            style={{ backgroundColor: (CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.color + '15' }}
-          >
-            {(CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.icon}
-          </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-[15px] text-black">{exp.description}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-[var(--color-ios-grey)]">
-                {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
-              </span>
-              {exp.notes && (
-                <>
-                  <div className="w-0.5 h-0.5 rounded-full bg-gray-300" />
-                  <span className="text-[11px] font-medium text-[var(--color-ios-grey)] truncate max-w-[120px]">{exp.notes}</span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-black text-[17px] text-black">
-            ${exp.totalAmount.toLocaleString()}
-          </span>
-          <ChevronRight size={16} className="text-gray-300" />
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-};
+import PersonalAnalysisView from './PersonalAnalysisView';
+import SwipeableExpenseItem from './SwipeableExpenseItem';
+import { ScreenHeader, SectionTitle, ValueCard, SortMenu, EmptyState } from './SharedUI';
+import { cn, getCategoryById, getCategoryLabel, isExpenseInCategory, getMonthLabel, groupExpensesByMonth, calculateCategoryData, calculateMonthlyTrend } from '../lib/utils';
 
 interface PersonalScreenProps {
   expenses: Expense[];
@@ -146,24 +32,16 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   });
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   
-  const containerRef1 = useRef<HTMLDivElement>(null);
-  const containerRef2 = useRef<HTMLDivElement>(null);
-  const [hasWidth, setHasWidth] = useState(false);
   const dragControls = useDragControls();
 
   useEffect(() => {
     if (showAnalysis) {
-      // Even after animation, give it a tiny bit of time for layout to settle
       const timer = setTimeout(() => {
         setIsReady(true);
-        if (containerRef1.current?.clientWidth || containerRef2.current?.clientWidth) {
-          setHasWidth(true);
-        }
       }, 300);
       return () => clearTimeout(timer);
     } else {
       setIsReady(false);
-      setHasWidth(false);
     }
   }, [showAnalysis]);
 
@@ -184,14 +62,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   }, [expenses, sortType]);
 
   const groupedExpenses = useMemo(() => {
-    const groups: Record<string, Expense[]> = {};
-    sortedExpenses.forEach(exp => {
-      const date = new Date(exp.date);
-      const key = `${date.getFullYear()}/${date.getMonth() + 1}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(exp);
-    });
-    return groups;
+    return groupExpensesByMonth(sortedExpenses);
   }, [sortedExpenses]);
 
   const currentMonthTotal = useMemo(() => {
@@ -216,62 +87,27 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     });
   };
 
-  const getMonthLabel = (key: string) => {
-    const [year, month] = key.split('/');
-    if (i18n.language === 'zh') {
-      return `${year}年 ${month}月`;
-    }
-    const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleString('en-US', { month: 'long' });
-    return `${monthName} ${year}`;
-  };
 
   const categoryData = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    return CATEGORIES.map(cat => {
-      const value = expenses
-        .filter(exp => {
-          const isMatch = exp.category === cat.id || (exp.category === 'food' && cat.id === 'dining');
-          if (!isMatch) return false;
-          if (statsTimeRange === 'all') return true;
-          
-          const expDate = new Date(exp.date);
-          if (statsTimeRange === 'current') {
-            return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
-          }
-          
-          // statsTimeRange === 'custom'
-          const [selYear, selMonth] = statsSelectedMonth.split('/').map(Number);
-          return expDate.getMonth() === (selMonth - 1) && expDate.getFullYear() === selYear;
-        })
-        .reduce((sum, exp) => sum + exp.totalAmount, 0);
-      return { 
-        name: i18n.language === 'zh' ? cat.label : (t(`cat_${cat.id}`) || cat.label), 
-        value, 
-        color: cat.color, 
-        id: cat.id 
-      };
-    }).filter(d => d.value > 0);
+    const filteredExpenses = expenses.filter(exp => {
+      if (statsTimeRange === 'all') return true;
+      const expDate = new Date(exp.date);
+      if (statsTimeRange === 'current') {
+        return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
+      }
+      const [selYear, selMonth] = statsSelectedMonth.split('/').map(Number);
+      return expDate.getMonth() === (selMonth - 1) && expDate.getFullYear() === selYear;
+    });
+
+    return calculateCategoryData(filteredExpenses, t, i18n);
   }, [expenses, i18n.language, statsTimeRange, statsSelectedMonth, t]);
 
   const monthlyTrendData = useMemo(() => {
-    const months: Record<string, number> = {};
-    expenses.forEach(exp => {
-      const date = new Date(exp.date);
-      const key = `${date.getFullYear()}/${date.getMonth() + 1}`;
-      months[key] = (months[key] || 0) + exp.totalAmount;
-    });
-
-    return Object.entries(months)
-      .map(([name, amount]) => ({ name, amount }))
-      .sort((a, b) => {
-        const [ya, ma] = a.name.split('/').map(Number);
-        const [yb, mb] = b.name.split('/').map(Number);
-        return ya !== yb ? ya - yb : ma - mb;
-      })
-      .slice(-6); // Last 6 months
+    return calculateMonthlyTrend(expenses);
   }, [expenses]);
 
   const handleSaveExpense = (e: Expense) => {
@@ -329,218 +165,36 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
           </div>
         </header>
 
-        <div className="flex flex-col gap-6">
-          {/* Category Pie Chart */}
-          <section className="ios-card p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-black flex items-center gap-2">
-                <Sparkles size={16} className="text-amber-400" />
-                {t('category_ratio')}
-              </h3>
-              
-              {/* Time Range Switcher */}
-              <div className="bg-gray-100 p-1 rounded-lg flex gap-1">
-                <button
-                  onClick={() => setStatsTimeRange('current')}
-                  className={cn(
-                    "px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                    statsTimeRange === 'current' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
-                  )}
-                >
-                  {t('stats_this_month')}
-                </button>
-                <button
-                  onClick={() => {
-                    setStatsTimeRange('custom');
-                    setIsMonthPickerOpen(!isMonthPickerOpen);
-                  }}
-                  className={cn(
-                    "px-2 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1",
-                    statsTimeRange === 'custom' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
-                  )}
-                >
-                  {statsTimeRange === 'custom' ? getMonthLabel(statsSelectedMonth) : (i18n.language === 'zh' ? '選擇月份' : 'Month')}
-                  <ChevronDown size={10} className={cn("transition-transform", isMonthPickerOpen && "rotate-180")} />
-                </button>
-                <button
-                  onClick={() => setStatsTimeRange('all')}
-                  className={cn(
-                    "px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                    statsTimeRange === 'all' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
-                  )}
-                >
-                  {t('stats_all_time')}
-                </button>
-              </div>
-            </div>
-
-            {/* Month Picker Dropdown/Popover */}
-            <AnimatePresence>
-              {isMonthPickerOpen && statsTimeRange === 'custom' && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="flex flex-wrap gap-2 py-2 border-b border-gray-50">
-                    {Object.keys(groupedExpenses)
-                      .sort((a, b) => {
-                        const [ya, ma] = a.split('/').map(Number);
-                        const [yb, mb] = b.split('/').map(Number);
-                        return yb !== ya ? yb - ya : mb - ma;
-                      })
-                      .map(month => (
-                        <button
-                          key={month}
-                          onClick={() => {
-                            setStatsSelectedMonth(month);
-                            setIsMonthPickerOpen(false);
-                          }}
-                          className={cn(
-                            "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all",
-                            statsSelectedMonth === month ? "bg-[var(--color-ios-blue)] text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"
-                          )}
-                        >
-                          {getMonthLabel(month)}
-                        </button>
-                      ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            
-            <div className="w-full relative min-h-[160px]" ref={containerRef1}>
-              {categoryData.length > 0 && isReady && hasWidth ? (
-                <ResponsiveContainer width="100%" aspect={2.0}>
-                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <Pie
-                      data={categoryData}
-                      innerRadius={55}
-                      outerRadius={75}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-300 text-sm font-medium">{t('no_data')}</div>
-              )}
-            </div>
-
-            {/* Category Legend & Expandable Details */}
-            <div className="flex flex-col gap-2">
-              {categoryData.map((d) => (
-                <div key={d.id} className="flex flex-col gap-2">
-                  <button 
-                    onClick={() => setExpandedCategoryId(expandedCategoryId === d.id ? null : d.id)}
-                    className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
-                      <span className="text-sm font-bold text-gray-700">{d.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-black">${d.value.toLocaleString()}</span>
-                      <ChevronDown 
-                        size={16} 
-                        className={cn("text-gray-300 transition-transform duration-300", expandedCategoryId === d.id && "rotate-180")} 
-                      />
-                    </div>
-                  </button>
-                  <AnimatePresence>
-                    {expandedCategoryId === d.id && (
-                      <motion.div 
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden flex flex-col gap-2 px-3 pb-3"
-                      >
-                        {expenses
-                          .filter(exp => exp.category === d.id || (exp.category === 'food' && d.id === 'dining'))
-                          .map(exp => (
-                            <div key={exp.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-xs">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-bold text-gray-800">{exp.description}</span>
-                                <span className="text-[10px] text-gray-400">
-                                  {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
-                                </span>
-                              </div>
-                              <span className="font-bold text-gray-600">${exp.totalAmount.toLocaleString()}</span>
-                            </div>
-                          ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Monthly Trend Chart */}
-          <section className="ios-card p-6 flex flex-col gap-6">
-            <h3 className="text-sm font-bold text-black flex items-center gap-2">
-              <TrendingUp size={16} className="text-[var(--color-ios-blue)]" />
-              {t('monthly_trend')}
-            </h3>
-            <div className="w-full relative min-h-[160px]" ref={containerRef2}>
-              {monthlyTrendData.length > 0 && isReady && hasWidth ? (
-                <ResponsiveContainer width="100%" aspect={2}>
-                  <LineChart data={monthlyTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F0F0F0" />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: '#8E8E93' }}
-                      dy={10}
-                    />
-                    <YAxis hide />
-                    <RechartsTooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                      labelStyle={{ fontWeight: 'bold', marginBottom: '4px' }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="amount" 
-                      stroke="var(--color-ios-blue)" 
-                      strokeWidth={4} 
-                      dot={{ r: 4, fill: 'var(--color-ios-blue)', strokeWidth: 2, stroke: '#FFF' }}
-                      activeDot={{ r: 6, strokeWidth: 0 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-300 text-sm font-medium">{t('generating_data')}</div>
-              )}
-            </div>
-          </section>
-        </div>
+        {/* Stats View */}
+        {isReady && (
+          <PersonalAnalysisView 
+            categoryData={categoryData}
+            monthlyTrendData={monthlyTrendData}
+            statsTimeRange={statsTimeRange}
+            setStatsTimeRange={setStatsTimeRange}
+            statsSelectedMonth={statsSelectedMonth}
+            setStatsSelectedMonth={setStatsSelectedMonth}
+            isMonthPickerOpen={isMonthPickerOpen}
+            setIsMonthPickerOpen={setIsMonthPickerOpen}
+            groupedExpenses={groupedExpenses}
+            expenses={expenses}
+            expandedCategoryId={expandedCategoryId}
+            setExpandedCategoryId={setExpandedCategoryId}
+          />
+        )}
       </motion.div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="px-1 pt-8">
-        <h1 className="text-3xl font-extrabold text-black tracking-tight">{t('personal')}</h1>
-      </header>
+      <ScreenHeader title={t('personal')} />
 
       <div className="flex flex-col gap-6">
-        {/* Total Card - Restored large style */}
-        <section>
-          <div className="ios-card flex flex-col items-center justify-center py-8 gap-1 bg-white shadow-md">
-            <span className="text-xs font-bold text-[var(--color-ios-grey)] uppercase tracking-widest">{t('monthly_total')}</span>
-            <span className="text-5xl font-black text-black tracking-tighter">${currentMonthTotal.toLocaleString()}</span>
-          </div>
-        </section>
+        <ValueCard 
+          label={t('monthly_total')} 
+          value={currentMonthTotal.toLocaleString()} 
+        />
 
         <div className="flex gap-3">
           <button 
@@ -559,67 +213,32 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
           </button>
         </div>
 
-        {/* List Section */}
         <section className="flex flex-col gap-3 pb-24">
-          <div className="flex items-center justify-between px-1 relative">
-            <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('recent_records')}</h2>
-            
-            <div className="relative">
-              <button 
-                onClick={() => setIsSortOpen(!isSortOpen)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 active:bg-gray-100 transition-colors"
-                aria-label={t('sort')}
-              >
-                <span className="text-[10px] font-bold text-gray-400 capitalize">{t('sort')}</span>
-                <ChevronDown size={12} className={cn("text-gray-300 transition-transform", isSortOpen && "rotate-180")} />
-              </button>
-
-              <AnimatePresence>
-                {isSortOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setIsSortOpen(false)} 
-                    />
-                    <motion.div
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-xl z-50 overflow-hidden"
-                    >
-                      {(['date_desc', 'date_asc', 'amount_desc', 'amount_asc'] as const).map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            setSortType(type);
-                            setIsSortOpen(false);
-                          }}
-                          className={cn(
-                            "w-full px-4 py-3 text-left text-[13px] font-medium transition-colors border-b border-gray-50 last:border-0",
-                            sortType === type ? "text-[var(--color-ios-blue)] bg-blue-50/50" : "text-gray-600 active:bg-gray-50"
-                          )}
-                        >
-                          {t(`sort_${type}`)}
-                        </button>
-                      ))}
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
+          <SectionTitle 
+            title={t('recent_records')}
+            rightAction={
+              <SortMenu 
+                isOpen={isSortOpen}
+                onToggle={setIsSortOpen}
+                currentSort={sortType}
+                label={t('sort')}
+                options={[
+                  { label: t('sort_date_desc'), value: 'date_desc' },
+                  { label: t('sort_date_asc'), value: 'date_asc' },
+                  { label: t('sort_amount_desc'), value: 'amount_desc' },
+                  { label: t('sort_amount_asc'), value: 'amount_asc' },
+                ]}
+                onSelect={(val) => setSortType(val)}
+              />
+            }
+          />
           
           <div className="flex flex-col gap-4">
             <AnimatePresence mode="popLayout">
               {Object.keys(groupedExpenses).length === 0 ? (
-                <div className="ios-card flex flex-col items-center justify-center py-12 px-4 text-center gap-2" key="empty">
-                  <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-2">
-                    <Sparkles size={24} className="text-gray-200" />
-                  </div>
-                  <span className="text-[var(--color-ios-grey)] font-medium text-sm leading-relaxed max-w-[200px]">
-                    {t('no_expense_yet')}<br/>{t('click_to_start')}
-                  </span>
-                </div>
+                <EmptyState 
+                  description={`${t('no_expense_yet')}\n${t('click_to_start')}`}
+                />
               ) : (
                 Object.entries(groupedExpenses)
                   .sort(([a], [b]) => {
@@ -637,7 +256,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                           className="flex items-center justify-between px-2 py-1 outline-none group"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-black text-black tracking-tight">{getMonthLabel(monthKey)}</span>
+                            <span className="text-[13px] font-black text-black tracking-tight">{getMonthLabel(monthKey, i18n)}</span>
                             <div className="h-[1px] w-4 bg-gray-100" />
                             <span className="text-[10px] font-bold text-gray-400">
                               {expenses.length} {t('expenses')}
@@ -658,13 +277,14 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                               className="overflow-hidden"
                             >
-                              <div className="flex flex-col gap-2.5">
+                              <div className="flex flex-col gap-2">
                                 {expenses.map((exp) => (
                                   <SwipeableExpenseItem 
                                     key={exp.id} 
                                     exp={exp} 
                                     onDelete={handleDeleteExpense}
                                     onEdit={handleEditExpense}
+                                    isPersonal={true}
                                   />
                                 ))}
                               </div>

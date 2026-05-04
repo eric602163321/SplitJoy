@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Member, Expense, SplitType, SplitDetail } from '../types';
 import { CATEGORIES } from '../constants';
-import { cn } from '../lib/utils';
+import { cn, getCategoryLabel } from '../lib/utils';
 import { AVATARS } from './AvatarGrid';
 
 interface CreateExpenseModalProps {
@@ -238,7 +238,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                     >
                       <span className="text-xl">{cat.icon}</span>
                       <span className="text-[10px] font-bold">
-                        {i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`)}
+                        {getCategoryLabel(cat.id, t, i18n)}
                       </span>
                     </button>
                   ))}

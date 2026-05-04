@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import GroupList from './GroupList';
 import CreateGroupForm from './CreateGroupForm';
 import GroupDetailScreen from './GroupDetailScreen';
+import { ScreenHeader } from './SharedUI';
 
 interface GroupScreenProps {
   groups: Group[];
@@ -94,10 +95,10 @@ export default function GroupScreen({
 
   return (
     <div className="flex flex-col gap-6 pb-12">
-      <header className="px-1 pt-8 flex flex-col gap-1">
-        <span className="text-[10px] font-bold text-[#8E8E93] tracking-widest uppercase">{t('overview')}</span>
-        <h1 className="text-3xl font-extrabold text-black tracking-tight">{t('group_list')}</h1>
-      </header>
+      <ScreenHeader 
+        title={t('group_list')} 
+        subtitle={t('overview')}
+      />
 
       <section className="flex flex-col gap-2">
         <div className="ios-card overflow-hidden">

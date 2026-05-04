@@ -9,6 +9,7 @@ import { User as UserType } from 'firebase/auth';
 import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X, Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
+import { ScreenHeader } from './SharedUI';
 import { cn } from '../lib/utils';
 
 const THEME_OPTIONS = [
@@ -224,10 +225,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
   return (
     <div className="flex flex-col gap-6 select-none relative">
       {renderSheet()}
-      <div className="flex flex-col gap-1 px-2 pt-4">
-        <h1 className="text-3xl font-black text-gray-900 tracking-tight">{t('settings')}</h1>
-        <p className="text-sm font-bold text-gray-400">{t('settings_desc')}</p>
-      </div>
+      <ScreenHeader 
+        title={t('settings')} 
+        subtitle={t('settings_desc')}
+        className="!pt-4"
+      />
 
       <div className="flex flex-col gap-4">
         {/* Account Section */}
