@@ -167,8 +167,6 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     avatar: AVATARS[0].id
   }), [t]);
 
-  const total = useMemo(() => expenses.reduce((sum, exp) => sum + exp.totalAmount, 0), [expenses]);
-
   const sortedExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => {
       if (sortType === 'date_desc') return new Date(b.date).getTime() - new Date(a.date).getTime();
@@ -178,6 +176,48 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
       return 0;
     });
   }, [expenses, sortType]);
+
+  const groupedExpenses = useMemo(() => {
+    const groups: Record<string, Expense[]> = {};
+    sortedExpenses.forEach(exp => {
+      const date = new Date(exp.date);
+      const key = `${date.getFullYear()}/${date.getMonth() + 1}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(exp);
+    });
+    return groups;
+  }, [sortedExpenses]);
+
+  const currentMonthTotal = useMemo(() => {
+    const now = new Date();
+    const key = `${now.getFullYear()}/${now.getMonth() + 1}`;
+    const monthExpenses = groupedExpenses[key] || [];
+    return monthExpenses.reduce((sum, exp) => sum + exp.totalAmount, 0);
+  }, [groupedExpenses]);
+
+  // Track expanded months. Initialized with current month.
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
+    const now = new Date();
+    return new Set([`${now.getFullYear()}/${now.getMonth() + 1}`]);
+  });
+
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) next.delete(monthKey);
+      else next.add(monthKey);
+      return next;
+    });
+  };
+
+  const getMonthLabel = (key: string) => {
+    const [year, month] = key.split('/');
+    if (i18n.language === 'zh') {
+      return `${year}年 ${month}月`;
+    }
+    const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleString('en-US', { month: 'long' });
+    return `${monthName} ${year}`;
+  };
 
   const categoryData = useMemo(() => {
     return CATEGORIES.map(cat => {
@@ -401,7 +441,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         <section>
           <div className="ios-card flex flex-col items-center justify-center py-8 gap-1 bg-white shadow-md">
             <span className="text-xs font-bold text-[var(--color-ios-grey)] uppercase tracking-widest">{t('monthly_total')}</span>
-            <span className="text-5xl font-black text-black tracking-tighter">${total.toLocaleString()}</span>
+            <span className="text-5xl font-black text-black tracking-tighter">${currentMonthTotal.toLocaleString()}</span>
           </div>
         </section>
 
@@ -472,9 +512,9 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
             </div>
           </div>
           
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-4">
             <AnimatePresence mode="popLayout">
-              {sortedExpenses.length === 0 ? (
+              {Object.keys(groupedExpenses).length === 0 ? (
                 <div className="ios-card flex flex-col items-center justify-center py-12 px-4 text-center gap-2" key="empty">
                   <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-2">
                     <Sparkles size={24} className="text-gray-200" />
@@ -484,14 +524,59 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                   </span>
                 </div>
               ) : (
-                sortedExpenses.map((exp) => (
-                  <SwipeableExpenseItem 
-                    key={exp.id} 
-                    exp={exp} 
-                    onDelete={handleDeleteExpense}
-                    onEdit={handleEditExpense}
-                  />
-                ))
+                Object.entries(groupedExpenses)
+                  .sort(([a], [b]) => {
+                    const [ya, ma] = a.split('/').map(Number);
+                    const [yb, mb] = b.split('/').map(Number);
+                    return yb !== ya ? yb - ya : mb - ma;
+                  })
+                  .map(([monthKey, monthExpenses]) => {
+                    const expenses = monthExpenses as Expense[];
+                    return (
+                      <div key={monthKey} className="flex flex-col gap-2">
+                        {/* Month Header */}
+                        <button 
+                          onClick={() => toggleMonth(monthKey)}
+                          className="flex items-center justify-between px-2 py-1 outline-none group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-black text-black tracking-tight">{getMonthLabel(monthKey)}</span>
+                            <div className="h-[1px] w-4 bg-gray-100" />
+                            <span className="text-[10px] font-bold text-gray-400">
+                              {expenses.length} {t('expenses')}
+                            </span>
+                          </div>
+                          <ChevronDown 
+                            size={14} 
+                            className={cn("text-gray-300 transition-transform duration-300", expandedMonths.has(monthKey) && "rotate-180")} 
+                          />
+                        </button>
+
+                        <AnimatePresence>
+                          {expandedMonths.has(monthKey) && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="flex flex-col gap-2.5">
+                                {expenses.map((exp) => (
+                                  <SwipeableExpenseItem 
+                                    key={exp.id} 
+                                    exp={exp} 
+                                    onDelete={handleDeleteExpense}
+                                    onEdit={handleEditExpense}
+                                  />
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })
               )}
             </AnimatePresence>
           </div>

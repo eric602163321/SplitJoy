@@ -12,11 +12,11 @@ import { useData } from '../contexts/DataContext';
 import { cn } from '../lib/utils';
 
 const THEME_OPTIONS = [
-  { id: 'default', label: '系統默認', color: '#F2F2F7' },
-  { id: 'soft-blue', label: '清爽藍', color: '#F5F9FF' },
-  { id: 'soft-pink', label: '戀愛粉', color: '#FFF5F8' },
-  { id: 'soft-green', label: '森林綠', color: '#F5FFF9' },
-  { id: 'warm', label: '溫暖橘', color: '#FFF9F5' },
+  { id: 'default', labelKey: 'theme_default', color: '#F2F2F7' },
+  { id: 'soft-blue', labelKey: 'theme_soft_blue', color: '#F5F9FF' },
+  { id: 'soft-pink', labelKey: 'theme_soft_pink', color: '#FFF5F8' },
+  { id: 'soft-green', labelKey: 'theme_soft_green', color: '#F5FFF9' },
+  { id: 'warm', labelKey: 'theme_warm', color: '#FFF9F5' },
 ];
 
 const LANGUAGE_OPTIONS = [
@@ -160,7 +160,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                           "text-[10px] font-bold transition-colors",
                           bgTexture === theme.id ? "text-[var(--color-ios-blue)]" : "text-gray-400"
                         )}>
-                          {theme.label}
+                          {t(theme.labelKey)}
                         </span>
                       </button>
                     ))}
@@ -168,9 +168,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 ) : activeSheet === 'font' ? (
                   <div className="flex flex-col gap-6 py-4">
                     <div className="flex justify-between items-end px-2">
-                      <span className="text-[14px] font-bold text-gray-400">A</span>
-                      <span className="text-[18px] font-bold text-gray-400 font-serif">A</span>
-                      <span className="text-[24px] font-bold text-gray-400">A</span>
+                       <span className="text-[14px] font-bold text-gray-400">A</span>
+                       <span className="text-[18px] font-bold text-gray-400 font-serif">A</span>
+                       <span className="text-[24px] font-bold text-gray-400">A</span>
                     </div>
                     <div className="relative px-2">
                       <input 
@@ -339,7 +339,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 </div>
                 <div className="flex flex-col items-start">
                   <span className="font-bold text-gray-900">{t('bg_color')}</span>
-                  <span className="text-[11px] text-gray-400 font-bold">{currentTheme.label}</span>
+                  <span className="text-[11px] text-gray-400 font-bold">{t(currentTheme.labelKey)}</span>
                 </div>
               </div>
               <ChevronRight size={18} className="text-gray-300" />

@@ -1,7 +1,7 @@
 import { Category } from './types';
 
 export const CATEGORIES: Category[] = [
-  { id: 'food', label: '飲食', icon: '🍴', color: '#B74C40' },
+  { id: 'dining', label: '飲食', icon: '🍴', color: '#B74C40' },
   { id: 'housing', label: '住宿', icon: '🏠', color: '#4A6E63' },
   { id: 'transport', label: '交通', icon: '🚗', color: '#6B8D9C' },
   { id: 'shopping', label: '購物', icon: '🛍️', color: '#E2A752' },
