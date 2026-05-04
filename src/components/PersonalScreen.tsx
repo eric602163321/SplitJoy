@@ -95,9 +95,9 @@ const SwipeableExpenseItem: React.FC<{
         <div className="flex items-center gap-3">
           <div 
             className="w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm"
-            style={{ backgroundColor: CATEGORIES.find(c => c.id === exp.category)?.color + '15' }}
+            style={{ backgroundColor: (CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.color + '15' }}
           >
-            {CATEGORIES.find(c => c.id === exp.category)?.icon}
+            {(CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.icon}
           </div>
           <div className="flex flex-col">
             <span className="font-bold text-[15px] text-black">{exp.description}</span>
@@ -139,6 +139,12 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   const [isReady, setIsReady] = useState(false);
   const [sortType, setSortType] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [statsTimeRange, setStatsTimeRange] = useState<'current' | 'all' | 'custom'>('current');
+  const [statsSelectedMonth, setStatsSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}/${now.getMonth() + 1}`;
+  });
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   
   const containerRef1 = useRef<HTMLDivElement>(null);
   const containerRef2 = useRef<HTMLDivElement>(null);
@@ -220,9 +226,26 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   };
 
   const categoryData = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
     return CATEGORIES.map(cat => {
       const value = expenses
-        .filter(exp => exp.category === cat.id)
+        .filter(exp => {
+          const isMatch = exp.category === cat.id || (exp.category === 'food' && cat.id === 'dining');
+          if (!isMatch) return false;
+          if (statsTimeRange === 'all') return true;
+          
+          const expDate = new Date(exp.date);
+          if (statsTimeRange === 'current') {
+            return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
+          }
+          
+          // statsTimeRange === 'custom'
+          const [selYear, selMonth] = statsSelectedMonth.split('/').map(Number);
+          return expDate.getMonth() === (selMonth - 1) && expDate.getFullYear() === selYear;
+        })
         .reduce((sum, exp) => sum + exp.totalAmount, 0);
       return { 
         name: i18n.language === 'zh' ? cat.label : (t(`cat_${cat.id}`) || cat.label), 
@@ -231,7 +254,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         id: cat.id 
       };
     }).filter(d => d.value > 0);
-  }, [expenses, i18n.language]);
+  }, [expenses, i18n.language, statsTimeRange, statsSelectedMonth, t]);
 
   const monthlyTrendData = useMemo(() => {
     const months: Record<string, number> = {};
@@ -309,10 +332,84 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         <div className="flex flex-col gap-6">
           {/* Category Pie Chart */}
           <section className="ios-card p-4 flex flex-col gap-3">
-            <h3 className="text-sm font-bold text-black flex items-center gap-2">
-              <Sparkles size={16} className="text-amber-400" />
-              {t('category_ratio')}
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-black flex items-center gap-2">
+                <Sparkles size={16} className="text-amber-400" />
+                {t('category_ratio')}
+              </h3>
+              
+              {/* Time Range Switcher */}
+              <div className="bg-gray-100 p-1 rounded-lg flex gap-1">
+                <button
+                  onClick={() => setStatsTimeRange('current')}
+                  className={cn(
+                    "px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                    statsTimeRange === 'current' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
+                  )}
+                >
+                  {t('stats_this_month')}
+                </button>
+                <button
+                  onClick={() => {
+                    setStatsTimeRange('custom');
+                    setIsMonthPickerOpen(!isMonthPickerOpen);
+                  }}
+                  className={cn(
+                    "px-2 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1",
+                    statsTimeRange === 'custom' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
+                  )}
+                >
+                  {statsTimeRange === 'custom' ? getMonthLabel(statsSelectedMonth) : (i18n.language === 'zh' ? '選擇月份' : 'Month')}
+                  <ChevronDown size={10} className={cn("transition-transform", isMonthPickerOpen && "rotate-180")} />
+                </button>
+                <button
+                  onClick={() => setStatsTimeRange('all')}
+                  className={cn(
+                    "px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                    statsTimeRange === 'all' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
+                  )}
+                >
+                  {t('stats_all_time')}
+                </button>
+              </div>
+            </div>
+
+            {/* Month Picker Dropdown/Popover */}
+            <AnimatePresence>
+              {isMonthPickerOpen && statsTimeRange === 'custom' && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex flex-wrap gap-2 py-2 border-b border-gray-50">
+                    {Object.keys(groupedExpenses)
+                      .sort((a, b) => {
+                        const [ya, ma] = a.split('/').map(Number);
+                        const [yb, mb] = b.split('/').map(Number);
+                        return yb !== ya ? yb - ya : mb - ma;
+                      })
+                      .map(month => (
+                        <button
+                          key={month}
+                          onClick={() => {
+                            setStatsSelectedMonth(month);
+                            setIsMonthPickerOpen(false);
+                          }}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all",
+                            statsSelectedMonth === month ? "bg-[var(--color-ios-blue)] text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"
+                          )}
+                        >
+                          {getMonthLabel(month)}
+                        </button>
+                      ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
             <div className="w-full relative min-h-[160px]" ref={containerRef1}>
               {categoryData.length > 0 && isReady && hasWidth ? (
                 <ResponsiveContainer width="100%" aspect={2.0}>
@@ -367,7 +464,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                         className="overflow-hidden flex flex-col gap-2 px-3 pb-3"
                       >
                         {expenses
-                          .filter(exp => exp.category === d.id)
+                          .filter(exp => exp.category === d.id || (exp.category === 'food' && d.id === 'dining'))
                           .map(exp => (
                             <div key={exp.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-xs">
                               <div className="flex flex-col gap-0.5">

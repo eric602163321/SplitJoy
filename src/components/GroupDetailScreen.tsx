@@ -94,7 +94,9 @@ const SwipeableExpenseItem: React.FC<{
       >
         <div className="ios-grouped-item cursor-grab active:cursor-grabbing border-none">
           <div className="flex items-center gap-3">
-            <span className="text-xl">{CATEGORIES.find(c => c.id === exp.category)?.icon}</span>
+            <span className="text-xl">
+              {(CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.icon}
+            </span>
             <div className="flex flex-col">
               <span className="font-bold text-[15px]">{exp.description}</span>
               <div className="flex items-center gap-1 text-[10px] text-[#8E8E93]">

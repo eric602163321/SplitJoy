@@ -176,7 +176,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
   const categoryData = useMemo(() => {
     return CATEGORIES.map(cat => {
       const total = expenses
-        .filter(exp => exp.category === cat.id)
+        .filter(exp => exp.category === cat.id || (exp.category === 'food' && cat.id === 'dining'))
         .reduce((sum, exp) => sum + exp.totalAmount, 0);
       return { 
         name: i18n.language === 'zh' ? cat.label : t(`cat_${cat.id}`), 
@@ -355,7 +355,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                       <div className="grid grid-cols-2 gap-2">
                         {CATEGORIES.map(cat => {
                           const catTotal = expenses
-                            .filter(exp => exp.category === cat.id && exp.splits.some(s => s.memberId === m.id))
+                            .filter(exp => (exp.category === cat.id || (exp.category === 'food' && cat.id === 'dining')) && exp.splits.some(s => s.memberId === m.id))
                             .reduce((sum, exp) => sum + (exp.splits.find(s => s.memberId === m.id)?.amount || 0), 0);
                           
                           if (catTotal === 0) return null;
@@ -402,11 +402,11 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                                     <div className="flex flex-col gap-0.5">
                                       <span className="font-bold text-gray-700">{exp.description}</span>
                                       <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                        <span>{CATEGORIES.find(c => c.id === exp.category)?.icon}</span>
+                                        <span>{(CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.icon}</span>
                                         <span>
                                           {i18n.language === 'zh' 
-                                            ? CATEGORIES.find(c => c.id === exp.category)?.label 
-                                            : t(`cat_${exp.category}`)
+                                            ? (CATEGORIES.find(c => c.id === exp.category) || (exp.category === 'food' ? CATEGORIES.find(c => c.id === 'dining') : null))?.label 
+                                            : t(`cat_${exp.category === 'food' ? 'dining' : exp.category}`)
                                           } | {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
                                         </span>
                                       </div>
