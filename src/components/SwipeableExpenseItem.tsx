@@ -102,7 +102,7 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = ({
           }
         }}
         className={cn(
-          "bg-white relative z-10 transition-colors active:bg-gray-50",
+          "bg-white relative z-10 transition-colors active:bg-gray-50 flex items-center justify-between",
           isPersonal ? "py-2.5 px-4" : "ios-grouped-item border-none cursor-grab active:cursor-grabbing"
         )}
       >
@@ -140,14 +140,21 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = ({
         <div className="flex flex-col items-end gap-0.5">
           <div className="flex items-center gap-1">
             <span className={cn(
-              "font-black text-black",
+              "font-black text-black text-right",
               isPersonal ? "text-base" : "text-[15px] underline decoration-[#4285F4] decoration-2 underline-offset-4"
             )}>
-              {currency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${currency}`}
+              {exp.originalCurrency 
+                ? (exp.originalCurrency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${exp.originalCurrency}`)
+                : (currency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${currency}`)
+              }
             </span>
-            {isPersonal && <ChevronRight size={16} className="text-gray-300" />}
+            {isPersonal && <ChevronRight size={16} className="text-[#C7C7CC]" />}
           </div>
-          {!isPersonal && <span className="text-[10px] text-[#8E8E93] font-bold">{currency}</span>}
+          {!isPersonal && (
+            <span className="text-[10px] text-[#8E8E93] font-bold">
+              {exp.originalCurrency || currency}
+            </span>
+          )}
         </div>
       </motion.div>
     </div>

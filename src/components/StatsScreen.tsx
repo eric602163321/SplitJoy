@@ -22,11 +22,8 @@ const SwipeableDebtItem: React.FC<{
   isSettled: boolean; 
   onToggle: () => void;
   index: number;
-  conversion?: {
-    rate: number;
-    currency: string;
-  };
-}> = ({ debt, members, isSettled, onToggle, index, conversion }) => {
+  currentCurrency?: string;
+}> = ({ debt, members, isSettled, onToggle, index, currentCurrency }) => {
   const { t } = useTranslation();
   const x = useMotionValue(0);
   
@@ -124,15 +121,12 @@ const SwipeableDebtItem: React.FC<{
           <span className={cn(
             "text-xl font-black transition-colors",
             isSettled ? "text-green-600" : "text-[var(--color-ios-blue)]"
-          )}>${debt.amount}</span>
-          {conversion && conversion.rate !== 1 && (
-            <div className="flex flex-col items-end mt-1">
-              <span className="text-[10px] text-slate-400 font-bold">{t('approx_conv')}</span>
-              <span className="text-sm font-bold text-slate-600">
-                {conversion.currency} {(debt.amount * conversion.rate).toFixed(2)}
-              </span>
-            </div>
-          )}
+          )}>
+            {currentCurrency && currentCurrency !== '$' 
+              ? `${debt.amount.toFixed(1)} ${currentCurrency}`
+              : `$${debt.amount.toFixed(1)}`
+            }
+          </span>
         </div>
 
         {isSettled && (
@@ -155,12 +149,8 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [settledDebtKeys, setSettledDebtKeys] = useState<Set<string>>(new Set());
   
-  // Currency conversion state
-  const [targetCurrency, setTargetCurrency] = useState('');
-  const [customTargetCurrency, setCustomTargetCurrency] = useState('');
-  const [exchangeRate, setExchangeRate] = useState('1.0');
-  const [showConverter, setShowConverter] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  // Settlement rates toggle state
+  const [showSettlementRates, setShowSettlementRates] = useState(true);
 
   const toggleSettled = (from: string, to: string) => {
     const key = `${from}-${to}`;
@@ -173,21 +163,89 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
     setSettledDebtKeys(next);
   };
 
+  // Find all foreign currencies in this group
+  const uniqueForeignCurrencies = useMemo(() => {
+    const curs = new Set<string>();
+    expenses.forEach(exp => {
+      if (exp.originalCurrency && exp.originalCurrency !== currentCurrency) {
+        curs.add(exp.originalCurrency);
+      }
+    });
+    return Array.from(curs);
+  }, [expenses, currentCurrency]);
+
+  // Settlement rate inputs for each foreign currency (1 foreign = X default)
+  const [settlementRates, setSettlementRates] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    expenses.forEach(exp => {
+      if (exp.originalCurrency && exp.originalCurrency !== currentCurrency) {
+        const code = exp.originalCurrency;
+        if (!initial[code]) {
+          if (code === 'JPY' && currentCurrency === 'TWD') initial[code] = '0.22';
+          else if (code === 'TWD' && currentCurrency === 'JPY') initial[code] = '4.55';
+          else if (code === 'USD' && currentCurrency === 'TWD') initial[code] = '32.5';
+          else if (code === 'TWD' && currentCurrency === 'USD') initial[code] = '0.031';
+          else initial[code] = '1.0';
+        }
+      }
+    });
+    return initial;
+  });
+
+  // Keep rates in sync with newly appeared currencies
+  useEffect(() => {
+    setSettlementRates(prev => {
+      const next = { ...prev };
+      let changed = false;
+      uniqueForeignCurrencies.forEach(code => {
+        if (next[code] === undefined) {
+          if (code === 'JPY' && currentCurrency === 'TWD') next[code] = '0.22';
+          else if (code === 'TWD' && currentCurrency === 'JPY') next[code] = '4.55';
+          else if (code === 'USD' && currentCurrency === 'TWD') next[code] = '32.5';
+          else if (code === 'TWD' && currentCurrency === 'USD') next[code] = '0.031';
+          else next[code] = '1.0';
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [uniqueForeignCurrencies, currentCurrency]);
+
+  // Convert all expenses to group default currency based on settlementRates
+  const convertedExpenses = useMemo(() => {
+    return expenses.map(exp => {
+      const cur = exp.originalCurrency || currentCurrency || 'TWD';
+      if (cur === currentCurrency) {
+        return exp;
+      }
+      const rateStr = settlementRates[cur] || '1.0';
+      const rate = parseFloat(rateStr) || 1.0;
+      return {
+        ...exp,
+        totalAmount: exp.totalAmount * rate,
+        splits: exp.splits.map(s => ({
+          ...s,
+          amount: s.amount * rate
+        }))
+      };
+    });
+  }, [expenses, currentCurrency, settlementRates]);
+
   const categoryData = useMemo(() => {
-    return calculateCategoryData(expenses, t, i18n);
-  }, [expenses, i18n.language, t]);
+    return calculateCategoryData(convertedExpenses, t, i18n);
+  }, [convertedExpenses, i18n.language, t]);
 
   const memberSpending = useMemo(() => {
     return members.map(m => {
-      const total = expenses.reduce((sum, exp) => {
+      const total = convertedExpenses.reduce((sum, exp) => {
         const split = exp.splits.find(s => s.memberId === m.id);
         return sum + (split?.amount || 0);
       }, 0);
       return { ...m, total };
     });
-  }, [members, expenses]);
+  }, [members, convertedExpenses]);
 
-  const settlements = useMemo(() => calculateSettlement(members, expenses), [members, expenses]);
+  const settlements = useMemo(() => calculateSettlement(members, convertedExpenses), [members, convertedExpenses]);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
 
   const handleExportCSV = () => {
@@ -328,7 +386,9 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                   <span className="text-[15px] font-semibold">{m.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[15px] font-bold text-black">${m.total.toFixed(1)}</span>
+                  <span className="text-[15px] font-bold text-black">
+                    {currentCurrency && currentCurrency !== '$' ? `${m.total.toFixed(1)} ${currentCurrency}` : `$${m.total.toFixed(1)}`}
+                  </span>
                   <ChevronDown size={16} className={cn("text-gray-300 transition-transform", expandedId === m.id && "rotate-180")} />
                 </div>
               </button>
@@ -345,7 +405,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                       {/* Category Summary inside Accordion */}
                       <div className="grid grid-cols-2 gap-2">
                         {CATEGORIES.map(cat => {
-                          const catTotal = expenses
+                          const catTotal = convertedExpenses
                             .filter(exp => isExpenseInCategory(exp.category, cat.id) && exp.splits.some(s => s.memberId === m.id))
                             .reduce((sum, exp) => sum + (exp.splits.find(s => s.memberId === m.id)?.amount || 0), 0);
                           
@@ -359,7 +419,9 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                                   {getCategoryLabel(cat.id, t, i18n)}
                                 </span>
                               </div>
-                              <span className="text-[11px] font-black text-black">${catTotal.toFixed(1)}</span>
+                              <span className="text-[11px] font-black text-black">
+                                {currentCurrency && currentCurrency !== '$' ? `${catTotal.toFixed(1)} ${currentCurrency}` : `$${catTotal.toFixed(1)}`}
+                              </span>
                             </div>
                           );
                         })}
@@ -386,30 +448,46 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                               exit={{ height: 0, opacity: 0 }}
                               className="overflow-hidden flex flex-col gap-3 pt-1"
                             >
-                              {expenses
+                              {convertedExpenses
                                 .filter(exp => exp.splits.some(s => s.memberId === m.id))
-                                .map(exp => (
-                                  <div key={exp.id} className="flex justify-between items-center text-xs">
-                                    <div className="flex flex-col gap-0.5">
-                                      <span className="font-bold text-gray-700">{exp.description}</span>
-                                      <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                        <span>{getCategoryById(exp.category).icon}</span>
-                                        <span>
-                                          {getCategoryLabel(exp.category, t, i18n)} | {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
-                                        </span>
+                                .map(exp => {
+                                  const originalExp = expenses.find(e => e.id === exp.id)!;
+                                  return (
+                                    <div key={exp.id} className="flex justify-between items-center text-xs">
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="font-bold text-gray-700">{exp.description}</span>
+                                        <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                                          <span>{getCategoryById(exp.category).icon}</span>
+                                          <span>
+                                            {getCategoryLabel(exp.category, t, i18n)} | {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
+                                          </span>
+                                        </div>
                                       </div>
+                                      <span className="font-bold text-gray-500 text-right whitespace-nowrap">
+                                        {exp.originalCurrency && exp.originalCurrency !== currentCurrency ? (
+                                          <span className="flex items-center gap-1 justify-end">
+                                            <span>
+                                              {(originalExp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)} {exp.originalCurrency}
+                                            </span>
+                                            <span className="text-[9px] text-gray-400 font-medium whitespace-nowrap">
+                                              (≒ {currentCurrency === '$' ? `$${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}` : `${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)} ${currentCurrency || ''}`})
+                                            </span>
+                                          </span>
+                                        ) : (
+                                          currentCurrency === '$' 
+                                            ? `$${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}` 
+                                            : `${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)} ${currentCurrency || ''}`
+                                        )}
+                                      </span>
                                     </div>
-                                    <span className="font-bold text-gray-500">
-                                      ${exp.splits.find(s => s.memberId === m.id)?.amount.toFixed(1)}
-                                    </span>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </div>
 
-                      {expenses.filter(exp => exp.splits.some(s => s.memberId === m.id)).length === 0 && (
+                      {convertedExpenses.filter(exp => exp.splits.some(s => s.memberId === m.id)).length === 0 && (
                         <span className="text-[11px] text-gray-400 italic">{t('no_related_bill')}</span>
                       )}
                     </div>
@@ -425,94 +503,65 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
       <section className="flex flex-col gap-3 pb-8">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('debt_details')}</h2>
-          <button 
-            onClick={() => setShowConverter(!showConverter)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-all",
-              showConverter ? "bg-slate-200 text-slate-700" : "text-[var(--color-ios-blue)] hover:bg-blue-50"
-            )}
-          >
-            <Globe size={12} />
-            <span>{t('currency_conversion')}</span>
-          </button>
+          {uniqueForeignCurrencies.length > 0 && (
+            <button 
+              onClick={() => setShowSettlementRates(!showSettlementRates)}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border border-slate-100 shadow-xs",
+                showSettlementRates 
+                  ? "bg-[#007AFF] text-white border-transparent" 
+                  : "bg-white text-[var(--color-ios-blue)] hover:bg-blue-50"
+              )}
+            >
+              <Globe size={11} />
+              <span>{i18n.language === 'zh' ? '設定結算匯率' : 'Set Rates'}</span>
+              <ChevronDown size={11} className={cn("transition-transform duration-200", showSettlementRates && "rotate-180")} />
+            </button>
+          )}
         </div>
 
-        <AnimatePresence>
-          {showConverter && (
-            <motion.div
+        {/* Foreign Settlement Rates Card */}
+        <AnimatePresence initial={false}>
+          {uniqueForeignCurrencies.length > 0 && showSettlementRates && (
+            <motion.div 
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
+              animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden mb-4 px-1"
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="overflow-hidden"
             >
-              <div className="ios-card p-4 bg-slate-50 border-none shadow-inner flex flex-col gap-4">
-                <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">{t('target_currency')}</label>
-                  <div className="flex flex-col gap-3">
-                    <button 
-                      onClick={() => setIsPickerOpen(true)}
-                      className="w-full bg-white flex items-center justify-between py-3 px-4 rounded-xl text-[15px] text-black outline-none border border-slate-100 active:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex flex-col items-start text-left">
-                        <span className="font-bold">
-                          {(() => {
-                            const found = CURRENCIES.find(c => c.code === targetCurrency);
-                            return found ? t(found.name) : (targetCurrency ? `${t('common_currency')}: ${targetCurrency}` : t('select_currency'));
-                          })()}
-                        </span>
-                        <span className="text-[10px] uppercase font-bold text-[#8E8E93]">{targetCurrency || "-"}</span>
-                      </div>
-                      <ChevronDown size={18} className="text-[#C7C7CC]" />
-                    </button>
-
-                    <CurrencyPickerModal 
-                      isOpen={isPickerOpen}
-                      onClose={() => setIsPickerOpen(false)}
-                      selectedCode={targetCurrency}
-                      excludeCode={currentCurrency}
-                      onSelect={(code) => {
-                        setTargetCurrency(code);
-                        setCustomTargetCurrency('');
-                      }}
-                      title={t('select_currency')}
-                    />
-
-                    <input 
-                      type="text" 
-                      placeholder={t('currency_placeholder')}
-                      value={customTargetCurrency}
-                      onChange={(e) => {
-                        setCustomTargetCurrency(e.target.value.toUpperCase());
-                        if (e.target.value) setTargetCurrency('');
-                      }}
-                      className="w-full bg-white border border-slate-100 py-3 px-4 rounded-xl text-[15px] font-bold placeholder:text-gray-300 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all"
-                    />
-                  </div>
+              <div className="ios-card p-4 mx-1 bg-amber-50/50 border border-amber-100/60 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Globe size={14} className="text-amber-600 animate-pulse" />
+                  <span className="text-[11px] font-black text-amber-900 uppercase tracking-widest">
+                    {i18n.language === 'zh' ? '設定外幣結算匯率' : 'Set Foreign Settlement Rates'}
+                  </span>
                 </div>
-
-                {(targetCurrency || customTargetCurrency) && (
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
-                      {t('exchange_rate_label', { currency: currentCurrency || '???' })}
-                    </span>
-                    <div className="relative flex items-center">
-                      <div className="absolute left-3 text-slate-400">
-                        <Coins size={16} />
+                <div className="flex flex-col gap-2 mt-1">
+                  {uniqueForeignCurrencies.map(code => (
+                    <div key={code} className="bg-white px-3.5 py-3 rounded-2xl border border-amber-100 flex items-center justify-between shadow-xs">
+                      <span className="text-xs font-black text-slate-700">
+                        1 {code} = 
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={settlementRates[code] || '1.0'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                              setSettlementRates(prev => ({ ...prev, [code]: val }));
+                            }
+                          }}
+                          className="w-24 text-right text-sm font-black text-[#007AFF] bg-transparent outline-none border-b border-gray-100 focus:border-[#007AFF] pb-0.5"
+                          placeholder="e.g. 0.22"
+                        />
+                        <span className="text-xs font-bold text-slate-500">{currentCurrency}</span>
                       </div>
-                      <input 
-                        type="number"
-                        step="0.0001"
-                        value={exchangeRate}
-                        onChange={(e) => setExchangeRate(e.target.value)}
-                        placeholder={t('exchange_rate_placeholder')}
-                        className="w-full bg-white border border-slate-100 py-2.5 pl-10 pr-4 rounded-xl text-[14px] font-bold outline-none focus:ring-1 focus:ring-[#4285F4]"
-                      />
                     </div>
-                    <span className="text-[10px] text-slate-400 italic px-1">
-                      {t('display_name')} {customTargetCurrency || targetCurrency}
-                    </span>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
             </motion.div>
           )}
@@ -528,10 +577,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                 isSettled={settledDebtKeys.has(`${debt.from}-${debt.to}`)}
                 onToggle={() => toggleSettled(debt.from, debt.to)}
                 index={i}
-                conversion={(customTargetCurrency || targetCurrency) ? { 
-                  currency: customTargetCurrency || targetCurrency, 
-                  rate: parseFloat(exchangeRate) || 0 
-                } : undefined}
+                currentCurrency={currentCurrency}
               />
             ))}
           </div>

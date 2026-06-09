@@ -1,20 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ChevronDown, Trash2, Users, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Group } from '../types';
 import { SectionTitle, EmptyState } from './SharedUI';
 import { motion, AnimatePresence } from 'motion/react';
+import CurrencyPickerModal from './CurrencyPickerModal';
 
 interface GroupListProps {
   groups: Group[];
   onSelectGroup: (id: string) => void;
   onDeleteGroup: (id: string) => void;
   onStartCreate: () => void;
+  onUpdateGroup?: (group: Group) => void;
 }
 
-export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStartCreate }: GroupListProps) {
+export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStartCreate, onUpdateGroup }: GroupListProps) {
   const { t, i18n } = useTranslation();
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  
+  const [selectedGroupForCurrency, setSelectedGroupForCurrency] = useState<Group | null>(null);
+  const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
+  const timerRef = useRef<any>(null);
+  const isLongPressRef = useRef<boolean>(false);
+
+  const handleStart = (group: Group) => {
+    isLongPressRef.current = false;
+    timerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      setSelectedGroupForCurrency(group);
+      setIsCurrencyPickerOpen(true);
+      if (navigator.vibrate) {
+        navigator.vibrate(60);
+      }
+    }, 600);
+  };
+
+  const handleEnd = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+  };
+
+  const handleClick = (group: Group) => {
+    if (isLongPressRef.current) {
+      isLongPressRef.current = false;
+      return;
+    }
+    onSelectGroup(group.id);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,8 +82,14 @@ export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStar
               >
                 <div className="p-4 flex items-center justify-between">
                   <button 
-                    onClick={() => onSelectGroup(group.id)}
-                    className="flex-1 flex items-center gap-4 text-left outline-none"
+                    onMouseDown={() => handleStart(group)}
+                    onMouseUp={handleEnd}
+                    onMouseLeave={handleEnd}
+                    onTouchStart={() => handleStart(group)}
+                    onTouchEnd={handleEnd}
+                    onTouchMove={handleEnd}
+                    onClick={() => handleClick(group)}
+                    className="flex-1 flex items-center gap-4 text-left outline-none select-none active:scale-[0.99] transition-transform"
                   >
                     <div className="w-12 h-12 rounded-full bg-[#EBF4FF] flex items-center justify-center">
                       <Users size={24} className="text-[#4285F4]" />
@@ -126,6 +165,24 @@ export default function GroupList({ groups, onSelectGroup, onDeleteGroup, onStar
           </>
         )}
       </AnimatePresence>
+
+      <CurrencyPickerModal
+        isOpen={isCurrencyPickerOpen}
+        onClose={() => {
+          setIsCurrencyPickerOpen(false);
+          setSelectedGroupForCurrency(null);
+        }}
+        selectedCode={selectedGroupForCurrency?.currency || 'USD'}
+        onSelect={(code) => {
+          if (onUpdateGroup && selectedGroupForCurrency) {
+            onUpdateGroup({
+              ...selectedGroupForCurrency,
+              currency: code
+            });
+          }
+        }}
+        title={i18n.language === 'zh' ? '重新選擇結算幣別' : 'Change Settlement Currency'}
+      />
     </div>
   );
 }

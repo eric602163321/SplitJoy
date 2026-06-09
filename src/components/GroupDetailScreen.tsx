@@ -327,6 +327,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         members={group.members}
         onSave={handleSaveExpense}
         initialExpense={editingExpense || undefined}
+        groupCurrency={group.currency}
       />
     </motion.div>
   );

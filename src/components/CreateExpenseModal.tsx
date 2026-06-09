@@ -6,6 +6,7 @@ import { Member, Expense, SplitType, SplitDetail } from '../types';
 import { CATEGORIES } from '../constants';
 import { cn, getCategoryLabel } from '../lib/utils';
 import { AVATARS } from './AvatarGrid';
+import CurrencyPickerModal from './CurrencyPickerModal';
 
 interface CreateExpenseModalProps {
   isOpen: boolean;
@@ -13,9 +14,10 @@ interface CreateExpenseModalProps {
   members: Member[];
   onSave: (expense: Expense) => void;
   initialExpense?: Expense;
+  groupCurrency?: string;
 }
 
-export default function CreateExpenseModal({ isOpen, onClose, members, onSave, initialExpense }: CreateExpenseModalProps) {
+export default function CreateExpenseModal({ isOpen, onClose, members, onSave, initialExpense, groupCurrency }: CreateExpenseModalProps) {
   const { t, i18n } = useTranslation();
   const [totalAmount, setTotalAmount] = useState<string>('');
   const [description, setDescription] = useState('');
@@ -25,6 +27,10 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
   const [splitType, setSplitType] = useState<SplitType>('equal');
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
   const [selectedSplitMemberIds, setSelectedSplitMemberIds] = useState<string[]>([]);
+
+  // Individual currency states
+  const [expenseCurrency, setExpenseCurrency] = useState('TWD');
+  const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
 
   const amountRef = React.useRef<HTMLInputElement>(null);
 
@@ -37,7 +43,10 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
   useEffect(() => {
     if (isOpen) {
       if (initialExpense) {
-        setTotalAmount(initialExpense.totalAmount.toString());
+        const cur = initialExpense.originalCurrency || groupCurrency || 'TWD';
+        setExpenseCurrency(cur);
+        setTotalAmount((initialExpense.originalAmount ?? initialExpense.totalAmount).toString());
+
         setDescription(initialExpense.description);
         setNotes(initialExpense.notes || '');
         setCategory(initialExpense.category);
@@ -47,8 +56,6 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
         const activeIds = initialExpense.splits.filter(s => s.amount > 0).map(s => s.memberId);
         setSelectedSplitMemberIds(activeIds);
         
-        // For custom splits, we try to reconstruct ratio/weight if it's stored, 
-        // but since we only store result amounts, we fallback to showing amounts as weights for simplicity
         const initialWeights: Record<string, string> = {};
         members.forEach(m => {
           const split = initialExpense.splits.find(s => s.memberId === m.id);
@@ -56,6 +63,8 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
         });
         setCustomSplits(initialWeights);
       } else {
+        const defaultCur = groupCurrency || 'TWD';
+        setExpenseCurrency(defaultCur);
         setTotalAmount('');
         setDescription('');
         setNotes('');
@@ -80,12 +89,20 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
       return () => clearTimeout(timer);
     }
-  }, [isOpen, members, initialExpense]);
+  }, [isOpen, members, initialExpense, groupCurrency]);
 
   const handleAmountChange = (val: string) => {
     if (val === '' || /^\d*\.?\d*$/.test(val)) {
       setTotalAmount(val);
     }
+  };
+
+  const handleSelectCurrency = (code: string) => {
+    setExpenseCurrency(code);
+  };
+
+  const getBaseAmount = (): number => {
+    return parseFloat(totalAmount) || 0;
   };
 
   const toggleSplitMember = (memberId: string) => {
@@ -101,7 +118,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
   };
 
   const calculateBreakdown = (): SplitDetail[] => {
-    const total = parseFloat(totalAmount) || 0;
+    const total = getBaseAmount();
     if (total === 0 || members.length === 0) return [];
 
     const activeMembers = members.filter(m => selectedSplitMemberIds.includes(m.id));
@@ -131,16 +148,19 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
   const handleSave = () => {
     if (!isValid) return;
+    
     const newExpense: Expense = {
       id: initialExpense?.id || Date.now().toString(),
-      totalAmount: parseFloat(totalAmount),
+      totalAmount: getBaseAmount(),
       description,
       notes,
       category,
       date: initialExpense?.date || new Date().toISOString(),
       payerId,
       splitType,
-      splits
+      splits,
+      originalAmount: getBaseAmount(),
+      originalCurrency: expenseCurrency,
     };
     onSave(newExpense);
     onClose();
@@ -185,19 +205,32 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
         <div className="p-6 flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">{t('amount')}</span>
-            <div className="ios-card px-4 py-2 flex items-center">
-              <span className="text-2xl font-bold mr-2 text-slate-400">$</span>
-              <input 
-                ref={amountRef}
-                type="text" 
-                inputMode="decimal"
-                pattern="[0-9]*"
-                autoFocus
-                placeholder="0"
-                value={totalAmount}
-                onChange={(e) => handleAmountChange(e.target.value)}
-                className="w-full text-2xl font-bold bg-transparent border-none outline-none"
-              />
+            <div className="ios-card px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center flex-1">
+                {groupCurrency ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCurrencyPickerOpen(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 hover:bg-gray-200 active:scale-95 rounded-xl mr-3 font-extrabold text-[#4285F4] text-xs transition-all border border-gray-100"
+                  >
+                    <span>{expenseCurrency}</span>
+                    <span className="text-[9px] opacity-75">▼</span>
+                  </button>
+                ) : (
+                  <span className="text-2xl font-bold mr-2 text-slate-400">$</span>
+                )}
+                <input 
+                  ref={amountRef}
+                  type="text" 
+                  inputMode="decimal"
+                  pattern="[0-9]*"
+                  autoFocus
+                  placeholder="0"
+                  value={totalAmount}
+                  onChange={(e) => handleAmountChange(e.target.value)}
+                  className="w-full text-2xl font-bold bg-transparent border-none outline-none text-black animate-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -269,10 +302,12 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
               <div className="flex items-center px-1">
                 <div className="flex bg-[#F2F2F7] rounded-lg p-1 w-full">
                   <button 
+                    type="button"
                     onClick={() => setSplitType('equal')}
                     className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'equal' ? "bg-white shadow-sm text-black" : "text-slate-400")}
                   >{t('all_split')}</button>
                   <button 
+                    type="button"
                     onClick={() => setSplitType('custom')}
                     className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'custom' ? "bg-white shadow-sm text-black" : "text-slate-400")}
                   >{t('custom_ratio')}</button>
@@ -317,8 +352,11 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                             )}
                           />
                         )}
-                        <span className={cn("text-[15px] font-bold w-20 text-right transition-colors", isSelected ? "text-[var(--color-ios-blue)]" : "text-gray-300")}>
-                          ${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'}
+                        <span className={cn("text-[15px] font-bold w-26 text-right transition-colors whitespace-nowrap", isSelected ? "text-[var(--color-ios-blue)]" : "text-gray-300")}>
+                          {groupCurrency && groupCurrency !== '$' 
+                            ? `${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'} ${groupCurrency}`
+                            : `$${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'}`
+                          }
                         </span>
                       </div>
                     </div>
@@ -331,6 +369,14 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
           <div className="h-4" />
         </div>
       </motion.div>
+
+      <CurrencyPickerModal
+        isOpen={isCurrencyPickerOpen}
+        onClose={() => setIsCurrencyPickerOpen(false)}
+        selectedCode={expenseCurrency}
+        onSelect={handleSelectCurrency}
+        title={i18n.language === 'zh' ? '選擇此筆帳單幣別' : 'Bill Currency'}
+      />
     </div>
   );
 }

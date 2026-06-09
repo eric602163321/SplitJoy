@@ -21,6 +21,9 @@ export interface Expense {
   payerId: string;
   splitType: SplitType;
   splits: SplitDetail[];
+  originalAmount?: number;
+  originalCurrency?: string;
+  exchangeRate?: number;
 }
 
 export interface Group {

@@ -180,6 +180,7 @@ export default function GroupScreen({
         onSelectGroup={setSelectedGroupId}
         onDeleteGroup={onDeleteGroup}
         onStartCreate={() => setIsCreating(true)}
+        onUpdateGroup={onUpdateGroup}
       />
     </div>
   );
