@@ -81,6 +81,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentMembers = useRef(members);
   const currentGroups = useRef(groups);
 
+  // Tracking the last state we received from or successfully pushed to the cloud
+  const lastReceivedPersonalExpenses = useRef<string>('');
+  const lastReceivedMembers = useRef<string>('');
+
   useEffect(() => { currentPersonalExpenses.current = personalExpenses; }, [personalExpenses]);
   useEffect(() => { currentMembers.current = members; }, [members]);
   useEffect(() => { currentGroups.current = groups; }, [groups]);
@@ -94,6 +98,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setHasLoadedGroupsFromCloud(false);
       isFirstGroupsLoad.current = true;
       isFirstPersonalLoad.current = true;
+      lastReceivedPersonalExpenses.current = '';
+      lastReceivedMembers.current = '';
     });
     return () => unsubscribe();
   }, []);
@@ -126,6 +132,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     const unsubscribe = syncUserData(user.uid, (data) => {
       console.log(`[Cloud -> Local] Personal synced`);
+      
+      // Update our sync tracker immediately with what we got from cloud
+      const cloudExpensesStr = JSON.stringify(data.expenses);
+      const cloudMembersStr = JSON.stringify(data.members);
+      lastReceivedPersonalExpenses.current = cloudExpensesStr;
+      lastReceivedMembers.current = cloudMembersStr;
+
       if (isFirstPersonalLoad.current) {
         isFirstPersonalLoad.current = false;
         if (data.expenses.length > 0 || data.members.length > 0) {
@@ -134,8 +147,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           const pExp = currentPersonalExpenses.current;
           const mems = currentMembers.current;
+          const localExpensesStr = JSON.stringify(pExp);
+          const localMembersStr = JSON.stringify(mems);
           if (pExp.length > 0 || mems.length > 0) {
             console.log("Migrating local personal data to cloud...");
+            lastReceivedPersonalExpenses.current = localExpensesStr;
+            lastReceivedMembers.current = localMembersStr;
             updateUserData(user.uid, { personalExpenses: pExp, members: mems });
           }
         }
@@ -154,16 +171,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [groups]);
 
   useEffect(() => {
+    const currentExpStr = JSON.stringify(personalExpenses);
+    const currentMemsStr = JSON.stringify(members);
+
     // Immediate persistence to LocalStorage
-    localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, JSON.stringify(personalExpenses));
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+    localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, currentExpStr);
+    localStorage.setItem(STORAGE_KEYS.MEMBERS, currentMemsStr);
 
     // Debounced sync to Firebase (Wait 2.5s of inactivity)
     if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
+      // Check if local string matches cloud tracker. If so, SKIP upload!
+      if (currentExpStr === lastReceivedPersonalExpenses.current && currentMemsStr === lastReceivedMembers.current) {
+        return;
+      }
+
       // Avoid syncing empty local state immediately after auth if first load isn't done
       if (personalExpenses.length > 0 || members.length > 0 || !isFirstPersonalLoad.current) {
         const timer = setTimeout(() => {
           console.log(`[Cloud Sync] Debounced update for ${user.uid}`);
+          lastReceivedPersonalExpenses.current = currentExpStr;
+          lastReceivedMembers.current = currentMemsStr;
           updateUserData(user.uid, { personalExpenses, members }).catch(console.error);
         }, 2500);
         return () => clearTimeout(timer);

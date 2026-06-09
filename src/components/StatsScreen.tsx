@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw, Globe, Coins, FileOutput } from 'lucide-react';
 import { Member, Expense, Debt } from '../types';
@@ -15,6 +15,30 @@ interface StatsScreenProps {
   groupName?: string;
   currentCurrency?: string;
 }
+
+const CustomXAxisTick = (props: any) => {
+  const { x, y, payload, categoryData } = props;
+  if (!payload) return null;
+  const entry = categoryData?.find((c: any) => c.name === payload.value);
+  const cat = entry ? CATEGORIES.find(item => item.id === entry.id) : null;
+  const icon = cat ? cat.icon : '';
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={14}
+        textAnchor="middle"
+        fill="#8E8E93"
+        fontSize={10}
+        fontWeight="bold"
+      >
+        {icon ? `${icon} ${payload.value}` : payload.value}
+      </text>
+    </g>
+  );
+};
 
 const SwipeableDebtItem: React.FC<{ 
   debt: Debt; 
@@ -151,6 +175,9 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
   
   // Settlement rates toggle state
   const [showSettlementRates, setShowSettlementRates] = useState(true);
+
+  // Chart toggle state: pie or bar
+  const [chartType, setChartType] = useState<'pie' | 'bar'>('pie');
 
   const toggleSettled = (from: string, to: string) => {
     const key = `${from}-${to}`;
@@ -290,13 +317,32 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
   const [hasWidth, setHasWidth] = useState(false);
   
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsReady(true);
-      if (chartContainerRef.current?.clientWidth) {
+    let active = true;
+    const checkSize = () => {
+      if (!active) return;
+      if (chartContainerRef.current && chartContainerRef.current.clientWidth > 0) {
         setHasWidth(true);
+        setIsReady(true);
+      } else {
+        setTimeout(checkSize, 100);
+      }
+    };
+    
+    const fallbackTimer = setTimeout(() => {
+      if (active) {
+        setIsReady(true);
+        if (chartContainerRef.current?.clientWidth) {
+          setHasWidth(true);
+        }
       }
     }, 500);
-    return () => clearTimeout(timer);
+
+    checkSize();
+
+    return () => {
+      active = false;
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   return (
@@ -311,34 +357,62 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
         <span className="text-[10px] font-bold text-[#8E8E93] tracking-widest uppercase">{t('settlement_stats')}</span>
       </header>
 
-      {/* Pie Chart Section */}
+      {/* Pie & Bar Chart Section */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center justify-between px-1 py-1 gap-2 flex-wrap sm:flex-nowrap">
           <h2 className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase tracking-wider">{t('expense_categories')}</h2>
-          <button 
-            onClick={() => setShowExportConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold text-[var(--color-ios-blue)] hover:bg-blue-50 transition-all border border-blue-100"
-          >
-            <FileOutput size={12} />
-            <span>{t('export_report')}</span>
-          </button>
+          
+          <div className="flex items-center gap-2">
+            {/* iOS style segmented control */}
+            <div className="flex bg-[#EFEFF4] p-0.5 rounded-lg text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => setChartType('pie')}
+                className={cn(
+                  "px-2.5 py-1 rounded-md transition-all",
+                  chartType === 'pie' ? "bg-white text-black shadow-xs" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {i18n.language.startsWith('zh') ? '圓餅圖' : 'Pie'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('bar')}
+                className={cn(
+                  "px-2.5 py-1 rounded-md transition-all",
+                  chartType === 'bar' ? "bg-white text-black shadow-xs" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {i18n.language.startsWith('zh') ? '直條圖' : 'Bar'}
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setShowExportConfirm(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-[var(--color-ios-blue)] hover:bg-blue-50 transition-all border border-blue-100"
+            >
+              <FileOutput size={11} />
+              <span>{t('export_report')}</span>
+            </button>
+          </div>
         </div>
         <div className="ios-card p-6 min-h-[240px] flex flex-col items-center justify-center">
           {categoryData.length > 0 ? (
             <>
             <div className="w-full relative mb-4 min-h-[160px]" ref={chartContainerRef}>
               {categoryData.length > 0 && isReady && hasWidth ? (
-                <ResponsiveContainer width="100%" aspect={2.0}>
-                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={55}
-                      outerRadius={75}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
+                <ResponsiveContainer width="100%" height={160} minWidth={0}>
+                  {chartType === 'pie' ? (
+                    <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
                         {categoryData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
@@ -347,18 +421,47 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                       />
                     </PieChart>
-                  </ResponsiveContainer>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-3 gap-y-2 gap-x-4 mt-2 w-full">
-                {categoryData.map((cat, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                    <span className="text-[11px] font-bold text-gray-500 whitespace-nowrap">{cat.name}</span>
-                    <span className="text-[11px] font-black text-black ml-auto">${Math.round(cat.value)}</span>
-                  </div>
-                ))}
-              </div>
+                  ) : (
+                    <BarChart data={categoryData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+                      <XAxis 
+                        dataKey="name" 
+                        tick={<CustomXAxisTick categoryData={categoryData} />} 
+                        axisLine={false} 
+                        tickLine={false} 
+                      />
+                      <YAxis 
+                        tick={{ fill: '#8E8E93', fontSize: 10 }} 
+                        axisLine={false} 
+                        tickLine={false} 
+                        hide={true}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'rgba(0, 0, 0, 0.02)', radius: 4 }}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                      />
+                      <Bar 
+                        dataKey="value" 
+                        radius={[6, 6, 0, 0]} 
+                        barSize={32}
+                      >
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-3 gap-y-2 gap-x-4 mt-2 w-full">
+              {categoryData.map((cat, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                  <span className="text-[11px] font-bold text-gray-500 whitespace-nowrap">{cat.name}</span>
+                  <span className="text-[11px] font-black text-black ml-auto">${Math.round(cat.value)}</span>
+                </div>
+              ))}
+            </div>
             </>
           ) : (
             <div className="text-center text-slate-300 font-medium py-12">

@@ -18,7 +18,7 @@ interface SwipeableExpenseItemProps {
   isPersonal?: boolean;
 }
 
-const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = ({ 
+const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({ 
   exp, 
   onDelete, 
   onEdit, 
@@ -150,15 +150,10 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = ({
             </span>
             {isPersonal && <ChevronRight size={16} className="text-[#C7C7CC]" />}
           </div>
-          {!isPersonal && (
-            <span className="text-[10px] text-[#8E8E93] font-bold">
-              {exp.originalCurrency || currency}
-            </span>
-          )}
         </div>
       </motion.div>
     </div>
   );
-};
+});
 
 export default SwipeableExpenseItem;

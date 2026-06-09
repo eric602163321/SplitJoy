@@ -11,11 +11,59 @@ import {
   arrayRemove,
   deleteDoc
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Group, Member, Expense } from '../types';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Users collection
 export const syncUserGroups = (userId: string, callback: (groups: Group[]) => void) => {
+  const path = 'groups';
   const q = query(collection(db, 'groups'), where('memberIds', 'array-contains', userId));
   return onSnapshot(q, 
     (snapshot) => {
@@ -23,80 +71,110 @@ export const syncUserGroups = (userId: string, callback: (groups: Group[]) => vo
       callback(groups);
     },
     (error) => {
-      console.error("Error syncing groups:", error);
+      handleFirestoreError(error, OperationType.GET, path);
     }
   );
 };
 
 export const createGroup = async (group: Group, userId: string) => {
-  const groupRef = doc(db, 'groups', group.id);
-  const memberIds = Array.from(new Set([userId, ...group.members.map(m => m.id)]));
-  await setDoc(groupRef, {
-    ...group,
-    ownerId: userId,
-    memberIds: memberIds
-  });
+  const path = `groups/${group.id}`;
+  try {
+    const groupRef = doc(db, 'groups', group.id);
+    const memberIds = Array.from(new Set([userId, ...group.members.map(m => m.id)]));
+    await setDoc(groupRef, {
+      ...group,
+      ownerId: userId,
+      memberIds: memberIds
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const updateGroupDetails = async (groupId: string, data: Partial<Group>) => {
-  const groupRef = doc(db, 'groups', groupId);
-  const docSnap = await getDoc(groupRef);
-  
-  if (!docSnap.exists()) return;
-  const currentData = docSnap.data();
-  const ownerId = currentData.ownerId;
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const docSnap = await getDoc(groupRef);
+    
+    if (!docSnap.exists()) return;
+    const currentData = docSnap.data();
+    const ownerId = currentData.ownerId;
 
-  const updateData: any = { ...data };
-  if (data.members) {
-    // Crucial: Always include ownerId in memberIds so they don't lose sync access
-    const ids = data.members.map(m => m.id);
-    if (ownerId && !ids.includes(ownerId)) {
-      ids.push(ownerId);
+    const updateData: any = { ...data };
+    if (data.members) {
+      // Crucial: Always include ownerId in memberIds so they don't lose sync access
+      const ids = data.members.map(m => m.id);
+      if (ownerId && !ids.includes(ownerId)) {
+        ids.push(ownerId);
+      }
+      updateData.memberIds = Array.from(new Set(ids));
     }
-    updateData.memberIds = Array.from(new Set(ids));
+    
+    await updateDoc(groupRef, updateData);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
-  
-  await updateDoc(groupRef, updateData);
 };
 
 export const addExpenseToGroup = async (groupId: string, expense: Expense) => {
-  const groupRef = doc(db, 'groups', groupId);
-  await updateDoc(groupRef, {
-    expenses: arrayUnion(expense)
-  });
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    await updateDoc(groupRef, {
+      expenses: arrayUnion(expense)
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const removeExpenseFromGroup = async (groupId: string, expense: Expense) => {
-  const groupRef = doc(db, 'groups', groupId);
-  await updateDoc(groupRef, {
-    expenses: arrayRemove(expense)
-  });
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    await updateDoc(groupRef, {
+      expenses: arrayRemove(expense)
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const addMemberToGroup = async (groupId: string, member: Member) => {
-  const groupRef = doc(db, 'groups', groupId);
-  await updateDoc(groupRef, {
-    members: arrayUnion(member),
-    memberIds: arrayUnion(member.id)
-  });
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    await updateDoc(groupRef, {
+      members: arrayUnion(member),
+      memberIds: arrayUnion(member.id)
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const removeMemberFromGroup = async (groupId: string, memberId: string) => {
-  const groupRef = doc(db, 'groups', groupId);
-  // This is a bit complex for arrayRemove of objects, might need to get doc first
-  const docSnap = await getDoc(groupRef);
-  if (docSnap.exists()) {
-    const group = docSnap.data() as Group;
-    const updatedMembers = group.members.filter(m => m.id !== memberId);
-    await updateDoc(groupRef, {
-      members: updatedMembers,
-      memberIds: arrayRemove(memberId)
-    });
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const docSnap = await getDoc(groupRef);
+    if (docSnap.exists()) {
+      const group = docSnap.data() as Group;
+      const updatedMembers = group.members.filter(m => m.id !== memberId);
+      await updateDoc(groupRef, {
+        members: updatedMembers,
+        memberIds: arrayRemove(memberId)
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 };
 
 // Sync user-specific data (personal expenses and members)
 export const syncUserData = (userId: string, callback: (data: { expenses: Expense[], members: Member[] }) => void) => {
+  const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
   return onSnapshot(userRef, 
     (snapshot) => {
@@ -107,24 +185,29 @@ export const syncUserData = (userId: string, callback: (data: { expenses: Expens
       });
     },
     (error) => {
-      console.error("Error syncing user data:", error);
+      handleFirestoreError(error, OperationType.GET, path);
     }
   );
 };
 
 export const updateUserData = async (userId: string, data: { personalExpenses?: Expense[], members?: Member[] }) => {
+  const path = `users/${userId}`;
   try {
     const userRef = doc(db, 'users', userId);
     console.log("Updating user data in Firestore for:", userId, Object.keys(data));
     await setDoc(userRef, data, { merge: true });
     console.log("User data updated successfully");
   } catch (error) {
-    console.error("Error updating user data:", error);
-    throw error;
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 };
 
 export const deleteGroup = async (groupId: string) => {
-  const groupRef = doc(db, 'groups', groupId);
-  await deleteDoc(groupRef);
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    await deleteDoc(groupRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
 };

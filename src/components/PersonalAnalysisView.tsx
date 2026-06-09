@@ -40,14 +40,38 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
   const containerRef1 = useRef<HTMLDivElement>(null);
   const containerRef2 = useRef<HTMLDivElement>(null);
   const [hasWidth, setHasWidth] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (containerRef1.current?.clientWidth || containerRef2.current?.clientWidth) {
+    let active = true;
+    const checkSize = () => {
+      if (!active) return;
+      if (
+        (containerRef1.current && containerRef1.current.clientWidth > 0) ||
+        (containerRef2.current && containerRef2.current.clientWidth > 0)
+      ) {
         setHasWidth(true);
+        setIsReady(true);
+      } else {
+        setTimeout(checkSize, 100);
       }
-    }, 400);
-    return () => clearTimeout(timer);
+    };
+    
+    const fallbackTimer = setTimeout(() => {
+      if (active) {
+        setIsReady(true);
+        if (containerRef1.current?.clientWidth || containerRef2.current?.clientWidth) {
+          setHasWidth(true);
+        }
+      }
+    }, 500);
+
+    checkSize();
+
+    return () => {
+      active = false;
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   return (
@@ -132,8 +156,8 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
         </AnimatePresence>
         
         <div className="w-full relative min-h-[160px]" ref={containerRef1}>
-          {categoryData.length > 0 && hasWidth ? (
-            <ResponsiveContainer width="100%" aspect={2.0}>
+          {categoryData.length > 0 && isReady && hasWidth ? (
+            <ResponsiveContainer width="100%" height={160} minWidth={0}>
               <PieChart>
                 <Pie
                   data={categoryData}
@@ -223,8 +247,8 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
           {t('monthly_trend')}
         </h3>
         <div className="w-full min-h-[160px]" ref={containerRef2}>
-          {monthlyTrendData.length > 0 && hasWidth ? (
-            <ResponsiveContainer width="100%" aspect={2.0}>
+          {monthlyTrendData.length > 0 && isReady && hasWidth ? (
+            <ResponsiveContainer width="100%" height={160} minWidth={0}>
               <BarChart data={monthlyTrendData}>
                 <XAxis 
                   dataKey="name" 
