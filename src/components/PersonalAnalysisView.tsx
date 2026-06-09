@@ -206,8 +206,15 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                   <span className="text-sm font-bold text-gray-700">{d.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-black text-black">
-                    {currency === '$' ? `$${d.value.toLocaleString()}` : `${d.value.toLocaleString()} ${currency}`}
+                  <span className="text-sm font-black text-black flex items-baseline gap-0.5">
+                    {currency === '$' ? (
+                      `$${d.value.toLocaleString()}`
+                    ) : (
+                      <>
+                        <span>{d.value.toLocaleString()}</span>
+                        <span className="text-[10px] font-bold text-gray-500 select-none">{currency}</span>
+                      </>
+                    )}
                   </span>
                   <ChevronDown 
                     size={16} 
@@ -233,18 +240,42 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                               {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
                             </span>
                           </div>
-                          <span className="font-bold text-gray-600">
-                            {exp.originalCurrency && exp.originalCurrency !== currency && exp.originalAmount !== undefined
-                              ? (
-                                  <>
-                                    {currency === '$' ? `$${exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}` : `${exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} ${currency}`}
-                                    <span className="text-[10px] text-gray-400 font-normal ml-1">
-                                      ({exp.originalCurrency === '$' ? `$${exp.originalAmount.toLocaleString()}` : `${exp.originalAmount.toLocaleString()} ${exp.originalCurrency}`})
-                                    </span>
-                                  </>
-                                )
-                              : (currency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${currency}`)
-                            }
+                           <span className="font-bold text-gray-600 text-right flex flex-col items-end">
+                            {exp.originalCurrency && exp.originalCurrency !== currency && exp.originalAmount !== undefined ? (
+                              <div className="flex flex-col items-end">
+                                <span className="flex items-baseline gap-0.5">
+                                  {currency === '$' ? (
+                                    `$${exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}`
+                                  ) : (
+                                    <>
+                                      <span>{exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}</span>
+                                      <span className="text-[9px] font-bold text-gray-400 select-none">{currency}</span>
+                                    </>
+                                  )}
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-normal mt-0.5 flex items-baseline gap-0.5">
+                                  <span>(</span>
+                                  {exp.originalCurrency === '$' ? (
+                                    `$${exp.originalAmount.toLocaleString()}`
+                                  ) : (
+                                    <>
+                                      <span>{exp.originalAmount.toLocaleString()}</span>
+                                      <span className="text-[8px] font-bold select-none">{exp.originalCurrency}</span>
+                                    </>
+                                  )}
+                                  <span>)</span>
+                                </span>
+                              </div>
+                            ) : (
+                              currency === '$' ? (
+                                `$${exp.totalAmount.toLocaleString()}`
+                              ) : (
+                                <span className="flex items-baseline gap-0.5">
+                                  <span>{exp.totalAmount.toLocaleString()}</span>
+                                  <span className="text-[9px] font-bold text-gray-400 select-none">{currency}</span>
+                                </span>
+                              )
+                            )}
                           </span>
                         </div>
                       ))}

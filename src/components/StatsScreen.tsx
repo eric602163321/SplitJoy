@@ -31,10 +31,10 @@ const CustomXAxisTick = (props: any) => {
         dy={14}
         textAnchor="middle"
         fill="#8E8E93"
-        fontSize={10}
+        fontSize={13}
         fontWeight="bold"
       >
-        {icon ? `${icon} ${payload.value}` : payload.value}
+        {icon || payload.value}
       </text>
     </g>
   );
@@ -143,13 +143,17 @@ const SwipeableDebtItem: React.FC<{
             {isSettled ? t('settled') : t('to_transfer')}
           </span>
           <span className={cn(
-            "text-xl font-black transition-colors",
+            "text-xl font-black transition-colors flex items-baseline justify-end",
             isSettled ? "text-green-600" : "text-[var(--color-ios-blue)]"
           )}>
-            {currentCurrency && currentCurrency !== '$' 
-              ? `${debt.amount.toFixed(1)} ${currentCurrency}`
-              : `$${debt.amount.toFixed(1)}`
-            }
+            {currentCurrency && currentCurrency !== '$' ? (
+              <>
+                <span>{debt.amount.toFixed(1)}</span>
+                <span className="text-[11px] font-bold opacity-75 ml-1 select-none">{currentCurrency}</span>
+              </>
+            ) : (
+              `$${debt.amount.toFixed(1)}`
+            )}
           </span>
         </div>
 
@@ -465,6 +469,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                         tick={<CustomXAxisTick categoryData={categoryData} />} 
                         axisLine={false} 
                         tickLine={false} 
+                        interval={0}
                       />
                       <YAxis 
                         tick={{ fill: '#8E8E93', fontSize: 10 }} 
@@ -490,14 +495,29 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                 </ResponsiveContainer>
               ) : null}
             </div>
-            <div className="grid grid-cols-3 gap-y-2 gap-x-4 mt-2 w-full">
-              {categoryData.map((cat, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                  <span className="text-[11px] font-bold text-gray-500 whitespace-nowrap">{cat.name}</span>
-                  <span className="text-[11px] font-black text-black ml-auto">${Math.round(cat.value)}</span>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-2 mt-4 pt-3.5 border-t border-gray-100/60 w-full">
+              {categoryData.map((cat, i) => {
+                const catObj = CATEGORIES.find(c => c.id === cat.id);
+                const icon = catObj ? catObj.icon : '📦';
+                return (
+                  <div key={i} className="flex items-center justify-between bg-gray-50/60 px-3 py-2 rounded-xl border border-gray-100 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:bg-gray-100/60">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                      <span className="text-sm" role="img" aria-label={cat.name}>{icon}</span>
+                    </div>
+                    <span className="text-[13px] font-black text-slate-800 tabular-nums flex items-baseline gap-0.5">
+                      {currentCurrency && currentCurrency !== '$' ? (
+                        <>
+                          <span>{Math.round(cat.value).toLocaleString()}</span>
+                          <span className="text-[10px] font-bold text-gray-500 select-none">{currentCurrency}</span>
+                        </>
+                      ) : (
+                        `$${Math.round(cat.value).toLocaleString()}`
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             </>
           ) : (
@@ -526,8 +546,15 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                   <span className="text-[15px] font-semibold">{m.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[15px] font-bold text-black">
-                    {currentCurrency && currentCurrency !== '$' ? `${m.total.toFixed(1)} ${currentCurrency}` : `$${m.total.toFixed(1)}`}
+                  <span className="text-[15px] font-semibold text-black flex items-baseline gap-0.5">
+                    {currentCurrency && currentCurrency !== '$' ? (
+                      <>
+                        <span className="font-bold">{m.total.toFixed(1)}</span>
+                        <span className="text-[10px] font-bold text-gray-500 select-none">{currentCurrency}</span>
+                      </>
+                    ) : (
+                      `$${m.total.toFixed(1)}`
+                    )}
                   </span>
                   <ChevronDown size={16} className={cn("text-gray-300 transition-transform", expandedId === m.id && "rotate-180")} />
                 </div>
@@ -559,8 +586,15 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                                   {getCategoryLabel(cat.id, t, i18n)}
                                 </span>
                               </div>
-                              <span className="text-[11px] font-black text-black">
-                                {currentCurrency && currentCurrency !== '$' ? `${catTotal.toFixed(1)} ${currentCurrency}` : `$${catTotal.toFixed(1)}`}
+                              <span className="text-[11px] font-black text-black flex items-baseline gap-0.5">
+                                {currentCurrency && currentCurrency !== '$' ? (
+                                  <>
+                                    <span>{catTotal.toFixed(1)}</span>
+                                    <span className="text-[8px] font-bold text-gray-400 select-none">{currentCurrency}</span>
+                                  </>
+                                ) : (
+                                  `$${catTotal.toFixed(1)}`
+                                )}
                               </span>
                             </div>
                           );
@@ -605,18 +639,33 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                                       </div>
                                       <span className="font-bold text-gray-500 text-right whitespace-nowrap">
                                         {exp.originalCurrency && exp.originalCurrency !== currentCurrency ? (
-                                          <span className="flex items-center gap-1 justify-end">
-                                            <span>
-                                              {(originalExp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)} {exp.originalCurrency}
+                                          <span className="flex items-center gap-1 justify-end flex-wrap text-[11px]">
+                                            <span className="flex items-baseline gap-0.5">
+                                              <span>{(originalExp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}</span>
+                                              <span className="text-[8px] font-bold text-gray-400 select-none">{exp.originalCurrency}</span>
                                             </span>
-                                            <span className="text-[9px] text-gray-400 font-medium whitespace-nowrap">
-                                              (≒ {currentCurrency === '$' ? `$${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}` : `${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)} ${currentCurrency || ''}`})
+                                            <span className="text-[9px] text-gray-400 font-medium whitespace-nowrap flex items-baseline gap-0.5">
+                                              (≒{' '}
+                                              {currentCurrency === '$' ? (
+                                                `$${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}`
+                                              ) : (
+                                                <>
+                                                  <span>{(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}</span>
+                                                  <span className="text-[7px] font-bold select-none">{currentCurrency || ''}</span>
+                                                </>
+                                              )}
+                                              )
                                             </span>
                                           </span>
                                         ) : (
-                                          currentCurrency === '$' 
-                                            ? `$${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}` 
-                                            : `${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)} ${currentCurrency || ''}`
+                                          currentCurrency === '$' ? (
+                                            `$${(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}`
+                                          ) : (
+                                            <span className="flex items-baseline gap-0.5">
+                                              <span>{(exp.splits.find(s => s.memberId === m.id)?.amount || 0).toFixed(1)}</span>
+                                              <span className="text-[8px] font-bold text-gray-400 select-none">{currentCurrency || ''}</span>
+                                            </span>
+                                          )
                                         )}
                                       </span>
                                     </div>

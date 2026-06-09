@@ -142,19 +142,42 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
         <div className="flex flex-col items-end gap-0.5">
           <div className="flex items-center gap-1">
             <span className={cn(
-              "font-black text-black text-right",
+              "font-black text-black text-right flex items-baseline gap-0.5",
               isPersonal ? "text-base" : "text-[15px] underline decoration-[#4285F4] decoration-2 underline-offset-4"
             )}>
-              {exp.originalCurrency 
-                ? (exp.originalCurrency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${exp.originalCurrency}`)
-                : (currency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${currency}`)
-              }
+              {exp.originalCurrency ? (
+                exp.originalCurrency === '$' ? (
+                  `$${exp.totalAmount.toLocaleString()}`
+                ) : (
+                  <>
+                    <span>{exp.totalAmount.toLocaleString()}</span>
+                    <span className="text-[10px] font-bold text-gray-450 select-none">{exp.originalCurrency}</span>
+                  </>
+                )
+              ) : (
+                currency === '$' ? (
+                  `$${exp.totalAmount.toLocaleString()}`
+                ) : (
+                  <>
+                    <span>{exp.totalAmount.toLocaleString()}</span>
+                    <span className="text-[10px] font-bold text-gray-450 select-none">{currency}</span>
+                  </>
+                )
+              )}
             </span>
             {isPersonal && <ChevronRight size={16} className="text-[#C7C7CC]" />}
           </div>
           {isPersonal && exp.originalCurrency && exp.originalCurrency !== currency && exchangeRate && (
-            <span className="text-[10px] font-bold text-gray-400 mr-5">
-              ≈ {currency === '$' ? `$${(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}` : `${(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} ${currency}`}
+            <span className="text-[10px] font-bold text-gray-400 mr-5 flex items-baseline gap-0.5 justify-end">
+              <span>≈</span>
+              {currency === '$' ? (
+                `$${(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}`
+              ) : (
+                <>
+                  <span>{(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}</span>
+                  <span className="text-[8px] font-bold select-none">{currency}</span>
+                </>
+              )}
             </span>
           )}
         </div>

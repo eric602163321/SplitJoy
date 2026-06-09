@@ -55,8 +55,15 @@ export const ValueCard: React.FC<{
 }> = ({ label, value, currency = '$', className }) => (
   <div className={cn("ios-card flex flex-col items-center justify-center py-8 gap-1 bg-white shadow-md", className)}>
     <span className="text-xs font-bold text-[#8E8E93] uppercase tracking-widest">{label}</span>
-    <span className="text-5xl font-black text-black tracking-tighter">
-      {currency === '$' ? `$${value}` : `${value} ${currency}`}
+    <span className="text-5xl font-black text-black tracking-tighter flex items-baseline">
+      {currency === '$' ? (
+        `$${value}`
+      ) : (
+        <>
+          <span>{value}</span>
+          <span className="text-xl font-bold text-gray-400 ml-1 select-none">{currency}</span>
+        </>
+      )}
     </span>
   </div>
 );
