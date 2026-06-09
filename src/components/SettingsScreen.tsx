@@ -6,11 +6,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User as UserType } from 'firebase/auth';
-import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X, Languages } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X, Languages, Coins } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
 import { ScreenHeader } from './SharedUI';
 import { cn } from '../lib/utils';
+import CurrencyPickerModal from './CurrencyPickerModal';
+import { CURRENCIES } from '../constants';
 
 const THEME_OPTIONS = [
   { id: 'default', labelKey: 'theme_default', color: '#F2F2F7' },
@@ -34,11 +36,13 @@ interface SettingsScreenProps {
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout, error }) => {
   const { t } = useTranslation();
-  const { bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage } = useData();
+  const { bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage, defaultCurrency, setDefaultCurrency } = useData();
   const [activeSheet, setActiveSheet] = useState<'theme' | 'font' | 'language' | 'logout' | null>(null);
+  const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
 
   const currentTheme = THEME_OPTIONS.find(t => t.id === bgTexture) || THEME_OPTIONS[0];
   const currentLang = LANGUAGE_OPTIONS.find(l => l.id === language) || LANGUAGE_OPTIONS[0];
+  const currentCurrencyObj = CURRENCIES.find(c => c.code === defaultCurrency) || CURRENCIES[0];
 
   const fontSizeLabels: Record<string, string> = {
     small: t('small'),
@@ -225,6 +229,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
   return (
     <div className="flex flex-col gap-6 select-none relative">
       {renderSheet()}
+      <CurrencyPickerModal
+        isOpen={isCurrencyPickerOpen}
+        onClose={() => setIsCurrencyPickerOpen(false)}
+        selectedCode={defaultCurrency}
+        onSelect={(code) => setDefaultCurrency(code)}
+        title={t('user_default_currency')}
+      />
       <ScreenHeader 
         title={t('settings')} 
         subtitle={t('settings_desc')}
@@ -358,6 +369,22 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 <div className="flex flex-col items-start">
                   <span className="font-bold text-gray-900">{t('font_size')}</span>
                   <span className="text-[11px] text-gray-400 font-bold">{fontSizeLabels[fontSize]}</span>
+                </div>
+              </div>
+              <ChevronRight size={18} className="text-gray-300" />
+            </button>
+
+            <button 
+              onClick={() => setIsCurrencyPickerOpen(true)}
+              className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-500">
+                  <Coins size={18} />
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="font-bold text-gray-900">{t('user_default_currency')}</span>
+                  <span className="text-[11px] text-gray-400 font-bold">{t(currentCurrencyObj.name)} ({currentCurrencyObj.code})</span>
                 </div>
               </div>
               <ChevronRight size={18} className="text-gray-300" />

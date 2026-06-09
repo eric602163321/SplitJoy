@@ -219,24 +219,61 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
     return initial;
   });
 
-  // Keep rates in sync with newly appeared currencies
+  const [loadingRates, setLoadingRates] = useState<Record<string, boolean>>({});
+  const [manuallyModified, setManuallyModified] = useState<Record<string, boolean>>({});
+  const [fetchedRates, setFetchedRates] = useState<Record<string, boolean>>({});
+  
+  const fetchedRef = useRef<Record<string, boolean>>({});
+  const loadingRef = useRef<Record<string, boolean>>({});
+
+  // Fetch real-time exchange rates to replace defaults
   useEffect(() => {
-    setSettlementRates(prev => {
-      const next = { ...prev };
-      let changed = false;
-      uniqueForeignCurrencies.forEach(code => {
-        if (next[code] === undefined) {
-          if (code === 'JPY' && currentCurrency === 'TWD') next[code] = '0.22';
-          else if (code === 'TWD' && currentCurrency === 'JPY') next[code] = '4.55';
-          else if (code === 'USD' && currentCurrency === 'TWD') next[code] = '32.5';
-          else if (code === 'TWD' && currentCurrency === 'USD') next[code] = '0.031';
-          else next[code] = '1.0';
-          changed = true;
-        }
+    uniqueForeignCurrencies.forEach(code => {
+      // Ensure initial slot exists if not defined yet
+      setSettlementRates(prev => {
+        if (prev[code] !== undefined) return prev;
+        const next = { ...prev };
+        if (code === 'JPY' && currentCurrency === 'TWD') next[code] = '0.22';
+        else if (code === 'TWD' && currentCurrency === 'JPY') next[code] = '4.55';
+        else if (code === 'USD' && currentCurrency === 'TWD') next[code] = '32.5';
+        else if (code === 'TWD' && currentCurrency === 'USD') next[code] = '0.031';
+        else next[code] = '1.0';
+        return next;
       });
-      return changed ? next : prev;
+
+      // Fetch real rate if not fetched yet, not manually modified, and not currently loading
+      if (!fetchedRef.current[code] && !manuallyModified[code] && !loadingRef.current[code]) {
+        loadingRef.current[code] = true;
+        setLoadingRates(prev => ({ ...prev, [code]: true }));
+        const targetBase = currentCurrency || 'TWD';
+        
+        fetch(`https://open.er-api.com/v6/latest/${code}`)
+          .then(res => {
+            if (!res.ok) throw new Error('Fetch failed');
+            return res.json();
+          })
+          .then(data => {
+            if (data && data.rates && data.rates[targetBase]) {
+              const rawRate = data.rates[targetBase];
+              const rateVal = parseFloat(rawRate.toFixed(4)).toString();
+              setSettlementRates(prev => {
+                if (manuallyModified[code]) return prev;
+                return { ...prev, [code]: rateVal };
+              });
+              fetchedRef.current[code] = true;
+              setFetchedRates(prev => ({ ...prev, [code]: true }));
+            }
+          })
+          .catch(err => {
+            console.error(`Failed to fetch rate for ${code}:`, err);
+          })
+          .finally(() => {
+            loadingRef.current[code] = false;
+            setLoadingRates(prev => ({ ...prev, [code]: false }));
+          });
+      }
     });
-  }, [uniqueForeignCurrencies, currentCurrency]);
+  }, [uniqueForeignCurrencies, currentCurrency, manuallyModified]);
 
   // Convert all expenses to group default currency based on settlementRates
   const convertedExpenses = useMemo(() => {
@@ -642,25 +679,73 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                 </div>
                 <div className="flex flex-col gap-2 mt-1">
                   {uniqueForeignCurrencies.map(code => (
-                    <div key={code} className="bg-white px-3.5 py-3 rounded-2xl border border-amber-100 flex items-center justify-between shadow-xs">
-                      <span className="text-xs font-black text-slate-700">
-                        1 {code} = 
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={settlementRates[code] || '1.0'}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                              setSettlementRates(prev => ({ ...prev, [code]: val }));
-                            }
-                          }}
-                          className="w-24 text-right text-sm font-black text-[#007AFF] bg-transparent outline-none border-b border-gray-100 focus:border-[#007AFF] pb-0.5"
-                          placeholder="e.g. 0.22"
-                        />
-                        <span className="text-xs font-bold text-slate-500">{currentCurrency}</span>
+                    <div key={code} className="bg-white px-3.5 py-3 rounded-2xl border border-amber-100/80 flex flex-col gap-2 shadow-xs transition-colors">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-black text-slate-700">
+                            1 {code} = 
+                          </span>
+                          
+                          {/* Live, Custom, Loading or Default status badges */}
+                          {loadingRates[code] ? (
+                            <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-100 font-bold px-1.5 py-0.5 rounded-sm animate-pulse whitespace-nowrap">
+                              ⚡ {i18n.language === 'zh' ? '取得即時匯率中...' : 'Fetching rate...'}
+                            </span>
+                          ) : manuallyModified[code] ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] bg-blue-50 text-[var(--color-ios-blue)] border border-blue-100 font-bold px-1.5 py-0.5 rounded-sm whitespace-nowrap">
+                                ✏️ {i18n.language === 'zh' ? '自訂匯率' : 'Custom'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Clear manual override
+                                  setManuallyModified(prev => {
+                                    const next = { ...prev };
+                                    delete next[code];
+                                    return next;
+                                  });
+                                  // Clear status so effect re-fetches
+                                  fetchedRef.current[code] = false;
+                                  setFetchedRates(prev => {
+                                    const next = { ...prev };
+                                    delete next[code];
+                                    return next;
+                                  });
+                                }}
+                                className="text-[9px] font-bold text-gray-400 hover:text-gray-600 active:text-gray-800 underline ml-0.5 whitespace-nowrap transition-colors"
+                              >
+                                {i18n.language === 'zh' ? '還原即時' : 'Reset'}
+                              </button>
+                            </div>
+                          ) : fetchedRates[code] ? (
+                            <span className="text-[9px] bg-green-50 text-green-700 border border-green-100 font-bold px-1.5 py-0.5 rounded-sm whitespace-nowrap">
+                              🌐 {i18n.language === 'zh' ? '即時匯率' : 'Real-time'}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] bg-gray-50 text-gray-500 border border-gray-100 font-bold px-1.5 py-0.5 rounded-sm whitespace-nowrap">
+                              ⚠️ {i18n.language === 'zh' ? '預設匯率' : 'Default'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={settlementRates[code] || '1.0'}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                setSettlementRates(prev => ({ ...prev, [code]: val }));
+                                setManuallyModified(prev => ({ ...prev, [code]: true }));
+                              }
+                            }}
+                            className="w-24 text-right text-sm font-black text-[#007AFF] bg-transparent outline-none border-b border-gray-100 focus:border-[#007AFF] pb-0.5"
+                            placeholder="e.g. 0.22"
+                          />
+                          <span className="text-xs font-bold text-slate-500">{currentCurrency}</span>
+                        </div>
                       </div>
                     </div>
                   ))}

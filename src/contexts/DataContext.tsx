@@ -20,6 +20,7 @@ interface DataContextType {
   bgTexture: string;
   fontSize: 'small' | 'medium' | 'large';
   language: string;
+  defaultCurrency: string;
   
   // Actions
   handleLogin: () => Promise<void>;
@@ -27,6 +28,7 @@ interface DataContextType {
   setBgTexture: (texture: string) => void;
   setFontSize: (size: 'small' | 'medium' | 'large') => void;
   setLanguage: (lang: string) => void;
+  setDefaultCurrency: (cur: string) => void;
   addPersonalExpense: (expense: Expense) => void;
   setPersonalExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
   addMember: (member: Member) => void;
@@ -66,6 +68,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [language, setLanguageState] = useState(() => {
     return localStorage.getItem('i18nextLng') || 'zh';
+  });
+  const [defaultCurrency, setDefaultCurrencyState] = useState(() => {
+    return localStorage.getItem('splitit_default_currency') || 'TWD';
   });
 
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -255,6 +260,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
+  const setDefaultCurrency = React.useCallback((cur: string) => {
+    setDefaultCurrencyState(cur);
+    localStorage.setItem('splitit_default_currency', cur);
+  }, []);
+
   useEffect(() => {
     updateTheme(bgTexture, fontSize);
   }, [bgTexture, fontSize, updateTheme]);
@@ -336,13 +346,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fontSize, 
     setFontSize, 
     language, 
-    setLanguage
+    setLanguage,
+    defaultCurrency,
+    setDefaultCurrency
   }), [
     user, groups, personalExpenses, members, isAuthLoading, 
     hasLoadedPersonalFromCloud, hasLoadedGroupsFromCloud, authError,
     handleLogin, handleLogout, addPersonalExpense, addMember, 
     removeMember, addGroup, updateGroup, removeGroup,
-    bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage
+    bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage,
+    defaultCurrency, setDefaultCurrency
   ]);
 
   return (

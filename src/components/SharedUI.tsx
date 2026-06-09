@@ -50,11 +50,14 @@ export const SectionTitle: React.FC<{
 export const ValueCard: React.FC<{
   label: string;
   value: string | number;
+  currency?: string;
   className?: string;
-}> = ({ label, value, className }) => (
+}> = ({ label, value, currency = '$', className }) => (
   <div className={cn("ios-card flex flex-col items-center justify-center py-8 gap-1 bg-white shadow-md", className)}>
     <span className="text-xs font-bold text-[#8E8E93] uppercase tracking-widest">{label}</span>
-    <span className="text-5xl font-black text-black tracking-tighter">${value}</span>
+    <span className="text-5xl font-black text-black tracking-tighter">
+      {currency === '$' ? `$${value}` : `${value} ${currency}`}
+    </span>
   </div>
 );
 

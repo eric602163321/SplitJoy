@@ -150,6 +150,7 @@ const resources = {
       "currency_eur": "€ Euro",
       "currency_krw": "₩ Korean Won",
       "currency_thb": "฿ Thai Baht",
+      "user_default_currency": "Default Currency",
     }
   },
   zh: {
@@ -298,6 +299,7 @@ const resources = {
       "currency_eur": "€ 歐元",
       "currency_krw": "₩ 韓圓",
       "currency_thb": "฿ 泰銖",
+      "user_default_currency": "預設貨幣",
     }
   }
 };

@@ -6,6 +6,7 @@ import { Group } from '../types';
 import { cn } from '../lib/utils';
 import { CURRENCIES } from '../constants';
 import CurrencyPickerModal from './CurrencyPickerModal';
+import { useData } from '../contexts/DataContext';
 
 interface CreateGroupFormProps {
   onAddGroup: (group: Group) => void;
@@ -14,8 +15,9 @@ interface CreateGroupFormProps {
 
 export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFormProps) {
   const { t } = useTranslation();
+  const { defaultCurrency } = useData();
   const [name, setName] = useState('');
-  const [currency, setCurrency] = useState('TWD');
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [customCurrency, setCustomCurrency] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);

@@ -16,6 +16,7 @@ interface SwipeableExpenseItemProps {
   payerEmoji?: string;
   payerName?: string;
   isPersonal?: boolean;
+  exchangeRate?: number;
 }
 
 const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({ 
@@ -26,7 +27,8 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
   showPayer = false,
   payerEmoji,
   payerName,
-  isPersonal = false
+  isPersonal = false,
+  exchangeRate
 }) => {
   const { t, i18n } = useTranslation();
   const x = useMotionValue(0);
@@ -150,6 +152,11 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
             </span>
             {isPersonal && <ChevronRight size={16} className="text-[#C7C7CC]" />}
           </div>
+          {isPersonal && exp.originalCurrency && exp.originalCurrency !== currency && exchangeRate && (
+            <span className="text-[10px] font-bold text-gray-400 mr-5">
+              ≈ {currency === '$' ? `$${(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}` : `${(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} ${currency}`}
+            </span>
+          )}
         </div>
       </motion.div>
     </div>

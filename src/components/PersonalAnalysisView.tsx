@@ -20,6 +20,7 @@ interface PersonalAnalysisViewProps {
   expenses: Expense[];
   expandedCategoryId: string | null;
   setExpandedCategoryId: (id: string | null) => void;
+  currency?: string;
 }
 
 const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
@@ -34,7 +35,8 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
   groupedExpenses,
   expenses,
   expandedCategoryId,
-  setExpandedCategoryId
+  setExpandedCategoryId,
+  currency = '$'
 }) => {
   const { t, i18n } = useTranslation();
   const containerRef1 = useRef<HTMLDivElement>(null);
@@ -204,7 +206,9 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                   <span className="text-sm font-bold text-gray-700">{d.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-black text-black">${d.value.toLocaleString()}</span>
+                  <span className="text-sm font-black text-black">
+                    {currency === '$' ? `$${d.value.toLocaleString()}` : `${d.value.toLocaleString()} ${currency}`}
+                  </span>
                   <ChevronDown 
                     size={16} 
                     className={cn("text-gray-300 transition-transform duration-300", expandedCategoryId === d.id && "rotate-180")} 
@@ -229,7 +233,19 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                               {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
                             </span>
                           </div>
-                          <span className="font-bold text-gray-600">${exp.totalAmount.toLocaleString()}</span>
+                          <span className="font-bold text-gray-600">
+                            {exp.originalCurrency && exp.originalCurrency !== currency && exp.originalAmount !== undefined
+                              ? (
+                                  <>
+                                    {currency === '$' ? `$${exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}` : `${exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} ${currency}`}
+                                    <span className="text-[10px] text-gray-400 font-normal ml-1">
+                                      ({exp.originalCurrency === '$' ? `$${exp.originalAmount.toLocaleString()}` : `${exp.originalAmount.toLocaleString()} ${exp.originalCurrency}`})
+                                    </span>
+                                  </>
+                                )
+                              : (currency === '$' ? `$${exp.totalAmount.toLocaleString()}` : `${exp.totalAmount.toLocaleString()} ${currency}`)
+                            }
+                          </span>
                         </div>
                       ))}
                   </motion.div>

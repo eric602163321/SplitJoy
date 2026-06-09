@@ -10,6 +10,7 @@ import PersonalAnalysisView from './PersonalAnalysisView';
 import SwipeableExpenseItem from './SwipeableExpenseItem';
 import { ScreenHeader, SectionTitle, ValueCard, SortMenu, EmptyState } from './SharedUI';
 import { cn, getCategoryById, getCategoryLabel, isExpenseInCategory, getMonthLabel, groupExpensesByMonth, calculateCategoryData, calculateMonthlyTrend } from '../lib/utils';
+import { useData } from '../contexts/DataContext';
 
 interface PersonalScreenProps {
   expenses: Expense[];
@@ -18,6 +19,7 @@ interface PersonalScreenProps {
 
 export default function PersonalScreen({ expenses, setExpenses }: PersonalScreenProps) {
   const { t, i18n } = useTranslation();
+  const { defaultCurrency } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
@@ -51,15 +53,114 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     avatar: AVATARS[0].id
   }), [t]);
 
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {};
+    expenses.forEach(exp => {
+      const code = exp.originalCurrency;
+      if (code && code !== defaultCurrency) {
+        if (code === 'JPY' && defaultCurrency === 'TWD') initial[code] = 0.22;
+        else if (code === 'TWD' && defaultCurrency === 'JPY') initial[code] = 4.55;
+        else if (code === 'USD' && defaultCurrency === 'TWD') initial[code] = 32.5;
+        else if (code === 'TWD' && defaultCurrency === 'USD') initial[code] = 0.031;
+        else initial[code] = 1.0;
+      }
+    });
+    return initial;
+  });
+
+  const uniqueForeignCurrencies = useMemo(() => {
+    const curs = new Set<string>();
+    expenses.forEach(exp => {
+      const cur = exp.originalCurrency || defaultCurrency;
+      if (cur !== defaultCurrency) {
+        curs.add(cur);
+      }
+    });
+    return Array.from(curs);
+  }, [expenses, defaultCurrency]);
+
+  const fetchedRef = useRef<Record<string, boolean>>({});
+  const loadingRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Reset fetched status when base currency changes
+    const lastBaseRef = { current: defaultCurrency };
+    if (lastBaseRef.current !== defaultCurrency) {
+      fetchedRef.current = {};
+      loadingRef.current = {};
+      lastBaseRef.current = defaultCurrency;
+    }
+
+    uniqueForeignCurrencies.forEach(code => {
+      setExchangeRates(prev => {
+        if (prev[code] !== undefined) return prev;
+        const next = { ...prev };
+        if (code === 'JPY' && defaultCurrency === 'TWD') next[code] = 0.22;
+        else if (code === 'TWD' && defaultCurrency === 'JPY') next[code] = 4.55;
+        else if (code === 'USD' && defaultCurrency === 'TWD') next[code] = 32.5;
+        else if (code === 'TWD' && defaultCurrency === 'USD') next[code] = 0.031;
+        else next[code] = 1.0;
+        return next;
+      });
+
+      if (!fetchedRef.current[code] && !loadingRef.current[code]) {
+        loadingRef.current[code] = true;
+        fetch(`https://open.er-api.com/v6/latest/${code}`)
+          .then(res => {
+            if (!res.ok) throw new Error('Fetch failed');
+            return res.json();
+          })
+          .then(data => {
+            if (data && data.rates && data.rates[defaultCurrency]) {
+              const rawRate = data.rates[defaultCurrency];
+              setExchangeRates(prev => ({
+                ...prev,
+                [code]: rawRate
+              }));
+              fetchedRef.current[code] = true;
+            }
+          })
+          .catch(err => {
+            console.error(`Failed to fetch personal rate for ${code} into ${defaultCurrency}:`, err);
+          })
+          .finally(() => {
+            loadingRef.current[code] = false;
+          });
+      }
+    });
+  }, [uniqueForeignCurrencies, defaultCurrency]);
+
+  const convertedExpenses = useMemo(() => {
+    return expenses.map(exp => {
+      const cur = exp.originalCurrency || defaultCurrency;
+      if (cur === defaultCurrency) {
+        return exp;
+      }
+      const rate = exchangeRates[cur] || 1.0;
+      return {
+        ...exp,
+        totalAmount: exp.totalAmount * rate,
+      };
+    });
+  }, [expenses, defaultCurrency, exchangeRates]);
+
   const sortedExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => {
       if (sortType === 'date_desc') return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortType === 'date_asc') return new Date(a.date).getTime() - new Date(b.date).getTime();
-      if (sortType === 'amount_desc') return b.totalAmount - a.totalAmount;
-      if (sortType === 'amount_asc') return a.totalAmount - b.totalAmount;
+      
+      const getConvertedAmount = (exp: Expense) => {
+        const cur = exp.originalCurrency || defaultCurrency;
+        if (cur === defaultCurrency) return exp.totalAmount;
+        const rate = exchangeRates[cur] || 1.0;
+        return exp.totalAmount * rate;
+      };
+      
+      if (sortType === 'amount_desc') return getConvertedAmount(b) - getConvertedAmount(a);
+      if (sortType === 'amount_asc') return getConvertedAmount(a) - getConvertedAmount(b);
       return 0;
     });
-  }, [expenses, sortType]);
+  }, [expenses, sortType, defaultCurrency, exchangeRates]);
 
   const groupedExpenses = useMemo(() => {
     return groupExpensesByMonth(sortedExpenses);
@@ -69,8 +170,12 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     const now = new Date();
     const key = `${now.getFullYear()}/${now.getMonth() + 1}`;
     const monthExpenses = groupedExpenses[key] || [];
-    return monthExpenses.reduce((sum, exp) => sum + exp.totalAmount, 0);
-  }, [groupedExpenses]);
+    return monthExpenses.reduce((sum, exp) => {
+      const cur = exp.originalCurrency || defaultCurrency;
+      const rate = cur === defaultCurrency ? 1.0 : (exchangeRates[cur] || 1.0);
+      return sum + (exp.totalAmount * rate);
+    }, 0);
+  }, [groupedExpenses, defaultCurrency, exchangeRates]);
 
   // Track expanded months. Initialized with current month.
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
@@ -93,7 +198,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const filteredExpenses = expenses.filter(exp => {
+    const filteredExpenses = convertedExpenses.filter(exp => {
       if (statsTimeRange === 'all') return true;
       const expDate = new Date(exp.date);
       if (statsTimeRange === 'current') {
@@ -104,11 +209,11 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     });
 
     return calculateCategoryData(filteredExpenses, t, i18n);
-  }, [expenses, i18n.language, statsTimeRange, statsSelectedMonth, t]);
+  }, [convertedExpenses, i18n.language, statsTimeRange, statsSelectedMonth, t]);
 
   const monthlyTrendData = useMemo(() => {
-    return calculateMonthlyTrend(expenses);
-  }, [expenses]);
+    return calculateMonthlyTrend(convertedExpenses);
+  }, [convertedExpenses]);
 
   const handleSaveExpense = (e: Expense) => {
     if (editingExpense) {
@@ -177,9 +282,10 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
             isMonthPickerOpen={isMonthPickerOpen}
             setIsMonthPickerOpen={setIsMonthPickerOpen}
             groupedExpenses={groupedExpenses}
-            expenses={expenses}
+            expenses={convertedExpenses}
             expandedCategoryId={expandedCategoryId}
             setExpandedCategoryId={setExpandedCategoryId}
+            currency={defaultCurrency}
           />
         )}
       </motion.div>
@@ -194,6 +300,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         <ValueCard 
           label={t('monthly_total')} 
           value={currentMonthTotal.toLocaleString()} 
+          currency={defaultCurrency}
         />
 
         <div className="flex gap-3">
@@ -285,6 +392,8 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                                     onDelete={handleDeleteExpense}
                                     onEdit={handleEditExpense}
                                     isPersonal={true}
+                                    currency={defaultCurrency}
+                                    exchangeRate={exp.originalCurrency ? (exchangeRates[exp.originalCurrency] || 1.0) : 1.0}
                                   />
                                 ))}
                               </div>
@@ -309,6 +418,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         members={[selfMember]}
         onSave={handleSaveExpense}
         initialExpense={editingExpense || undefined}
+        groupCurrency={defaultCurrency}
       />
     </div>
   );
