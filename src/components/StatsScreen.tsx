@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform, animate } from '
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ArrowRight, TrendingUp, Check, RotateCcw, Globe, Coins, FileOutput } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Member, Expense, Debt } from '../types';
 import { CATEGORIES, RETRO_COLORS, CURRENCIES } from '../constants';
 import { calculateSettlement, cn, getCategoryById, getCategoryLabel, isExpenseInCategory, calculateCategoryData } from '../lib/utils';
@@ -316,40 +317,174 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
   const settlements = useMemo(() => calculateSettlement(members, convertedExpenses), [members, convertedExpenses]);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
 
-  const handleExportCSV = () => {
-    // 1. Headers for Category Summary
-    let csvContent = "\uFEFF"; // UTF-8 BOM for Excel visibility
-    csvContent += `${t('expense_categories')}\n`;
-    csvContent += `${t('description')},${t('amount')}\n`;
-    categoryData.forEach(cat => {
-      csvContent += `${cat.name},${cat.value.toFixed(2)}\n`;
-    });
-    
-    csvContent += `\n${t('personal_payable')}\n`;
-    csvContent += `${t('member_name')},${t('amount')}\n`;
-    memberSpending.forEach(m => {
-      csvContent += `${m.name},${m.total.toFixed(2)}\n`;
-    });
+  const handleExportExcel = () => {
+    // Create an Excel workbook
+    const wb = XLSX.utils.book_new();
 
+    // 1. Build the "Overview" (總覽) sheet data
+    const overviewRows: any[][] = [];
+
+    // Title / Group Info
+    overviewRows.push([`${groupName || 'Report'} ${t('settlement_stats') || 'Settlement Stats'}`]);
+    overviewRows.push([`${i18n.language === 'zh' ? '匯出日期' : 'Export Date'}: ${new Date().toLocaleDateString()}`]);
+    overviewRows.push([]); // Empty row
+
+    // Section A: Category Summary (分類統計)
+    const amountColWithCurr = `${t('amount') || 'Amount'} (${currentCurrency || 'TWD'})`;
+    overviewRows.push([t('expense_categories') || 'Expense Categories']);
+    overviewRows.push([t('description') || 'Category', amountColWithCurr]);
+    categoryData.forEach(cat => {
+      overviewRows.push([cat.name, parseFloat(cat.value.toFixed(2))]);
+    });
+    overviewRows.push([]); // Empty row
+
+    // Section B: Member Payable/Receivable (個人應付)
+    overviewRows.push([t('personal_payable') || 'Personal Payable']);
+    overviewRows.push([t('member_name') || 'Member Name', amountColWithCurr]);
+    memberSpending.forEach(m => {
+      overviewRows.push([m.name, parseFloat(m.total.toFixed(2))]);
+    });
+    overviewRows.push([]); // Empty row
+
+    // Section C: Debt details (結算明細)
     if (settlements.length > 0) {
-      csvContent += `\n${t('debt_details')}\n`;
-      csvContent += `${t('debt_from')},${t('debt_to')},${t('amount')}\n`;
+      overviewRows.push([t('debt_details') || 'Debt Details']);
+      overviewRows.push([t('debt_from') || 'Debt From', t('debt_to') || 'Debt To', amountColWithCurr]);
       settlements.forEach(debt => {
         const fromName = members.find(m => m.id === debt.from)?.name || debt.from;
         const toName = members.find(m => m.id === debt.to)?.name || debt.to;
-        csvContent += `${fromName},${toName},${debt.amount.toFixed(2)}\n`;
+        overviewRows.push([fromName, toName, parseFloat(debt.amount.toFixed(2))]);
       });
     }
 
-    // Create blobs and trigger download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `SplitJoy_${groupName || 'Report'}_${new Date().toLocaleDateString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Convert array of arrays to sheet
+    const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
+    const overviewName = i18n.language === 'zh' ? '總覽' : 'Overview';
+    XLSX.utils.book_append_sheet(wb, wsOverview, overviewName);
+
+    // 2. Add individual sheets for each member recording their detailed consumption/spending
+    members.forEach(m => {
+      const memberRows: any[][] = [];
+      
+      // Header for member's sheet
+      const memberHeaderTitle = i18n.language === 'zh' 
+        ? `【${m.name}】的消費與分攤明細` 
+        : `Consumption and Sharing Details for 【${m.name}】`;
+      memberRows.push([memberHeaderTitle]);
+      memberRows.push([]); // Empty row
+
+      // Table columns
+      const dateCol = i18n.language === 'zh' ? '日期' : 'Date';
+      const categoryCol = i18n.language === 'zh' ? '類別' : 'Category';
+      const descCol = i18n.language === 'zh' ? '消費描述/項目' : 'Description/Item';
+      const typeCol = i18n.language === 'zh' ? '分攤方式' : 'Split Type';
+      const payerCol = i18n.language === 'zh' ? '付款人' : 'Paid By';
+      const totalAmountCol = i18n.language === 'zh' ? '原始總金額' : 'Original Total';
+      const myShareCol = i18n.language === 'zh' ? `我的分攤金額 (${currentCurrency || 'TWD'})` : `My Share (${currentCurrency || 'TWD'})`;
+
+      memberRows.push([dateCol, categoryCol, descCol, typeCol, payerCol, totalAmountCol, myShareCol]);
+
+      let totalMyPaidAmount = 0; // Sum of what this member paid/advanced
+      let totalMyShareAmount = 0; // Sum of what this member actually needs to share/pay
+
+      // Iterate over expenses to find those involving the current member
+      expenses.forEach((origExp, idx) => {
+        const convExp = convertedExpenses[idx];
+        const isPayer = origExp.payerId === m.id;
+        const splitDetail = convExp.splits.find(s => s.memberId === m.id);
+        const isSplitInvolved = !!splitDetail;
+
+        if (isPayer || isSplitInvolved) {
+          // Date
+          const formattedDate = new Date(origExp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US');
+          // Category Label
+          const catLabel = getCategoryLabel(origExp.category, t, i18n);
+          // Description + Notes
+          const fullDesc = origExp.notes ? `${origExp.description} (${origExp.notes})` : origExp.description;
+          // Split type text
+          const splitTypeText = origExp.splitType === 'equal' 
+            ? (i18n.language === 'zh' ? '大家平分' : 'Split Equally')
+            : (i18n.language === 'zh' ? '自訂比例' : 'Custom');
+          // Payer Name
+          const payerName = members.find(mem => mem.id === origExp.payerId)?.name || origExp.payerId;
+          const payerLabel = isPayer 
+            ? (i18n.language === 'zh' ? '我代墊' : 'Paid by Me') 
+            : payerName;
+
+          // Original Total Amount
+          const origCurr = origExp.originalCurrency || currentCurrency || 'TWD';
+          const formattedTotal = origCurr === '$'
+            ? `$${origExp.totalAmount.toFixed(1)}`
+            : `${origExp.totalAmount.toFixed(1)} ${origCurr}`;
+
+          // My split amount in group base currency
+          const mySplitValue = splitDetail ? parseFloat(splitDetail.amount.toFixed(2)) : 0;
+
+          memberRows.push([
+            formattedDate,
+            catLabel,
+            fullDesc,
+            splitTypeText,
+            payerLabel,
+            formattedTotal,
+            mySplitValue
+          ]);
+
+          if (isPayer) {
+            totalMyPaidAmount += convExp.totalAmount;
+          }
+          if (isSplitInvolved) {
+            totalMyShareAmount += mySplitValue;
+          }
+        }
+      });
+
+      memberRows.push([]); // Empty row
+      
+      // Add summary cards/rows inside the sheet
+      const paidLabel = i18n.language === 'zh' ? `總代墊金額 (折合 ${currentCurrency || 'TWD'})` : `Total Paid/Advanced (equiv. ${currentCurrency || 'TWD'})`;
+      const shareLabel = i18n.language === 'zh' ? `總應分攤金額 (折合 ${currentCurrency || 'TWD'})` : `Total Share/Owed (equiv. ${currentCurrency || 'TWD'})`;
+      const netLabel = i18n.language === 'zh' ? '應收/應付差額' : 'Net Difference';
+
+      const netValue = totalMyPaidAmount - totalMyShareAmount;
+      let netText = "";
+      if (netValue > 0) {
+        netText = i18n.language === 'zh' 
+          ? `應收 +${netValue.toFixed(2)} ${currentCurrency}`
+          : `To Receive +${netValue.toFixed(2)} ${currentCurrency}`;
+      } else if (netValue < 0) {
+        netText = i18n.language === 'zh'
+          ? `應付 ${netValue.toFixed(2)} ${currentCurrency}`
+          : `To Pay ${netValue.toFixed(2)} ${currentCurrency}`;
+      } else {
+        netText = i18n.language === 'zh' ? '結清 (0.00)' : 'Cleared (0.00)';
+      }
+
+      memberRows.push([paidLabel, parseFloat(totalMyPaidAmount.toFixed(2))]);
+      memberRows.push([shareLabel, parseFloat(totalMyShareAmount.toFixed(2))]);
+      memberRows.push([netLabel, netText]);
+
+      // Create member worksheet
+      const wsMember = XLSX.utils.aoa_to_sheet(memberRows);
+
+      // Sheet Name must be sanitized: 31 char max, cannot contain special chars \, ?, *, :, /, [ or ]
+      let sheetName = m.name.replace(/[\\\?\*:\/\[\]]/g, '');
+      if (sheetName.length > 25) {
+        sheetName = sheetName.substring(0, 25) + '...';
+      }
+      // Excel sheets must have unique names
+      let finalSheetName = sheetName || `Member_${m.id.substring(0, 4)}`;
+      let duplicateCount = 1;
+      while (wb.SheetNames.includes(finalSheetName)) {
+        finalSheetName = `${sheetName.substring(0, 20)}_${duplicateCount}`;
+        duplicateCount++;
+      }
+
+      XLSX.utils.book_append_sheet(wb, wsMember, finalSheetName);
+    });
+
+    // 3. Write Excel file and download
+    XLSX.writeFile(wb, `SplitJoy_${groupName || 'Report'}_${new Date().toLocaleDateString()}.xlsx`);
     setShowExportConfirm(false);
   };
 
@@ -850,7 +985,7 @@ export default function StatsScreen({ members, expenses, groupName, currentCurre
                   </p>
                 </div>
                 <button 
-                  onClick={handleExportCSV}
+                  onClick={handleExportExcel}
                   className="w-full p-4 text-[var(--color-ios-blue)] text-[20px] font-medium active:bg-gray-100 transition-colors"
                 >
                   {t('export_report')}

@@ -353,8 +353,8 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                           />
                         )}
                         <span className={cn("text-[15px] font-bold w-26 text-right transition-colors whitespace-nowrap", isSelected ? "text-[var(--color-ios-blue)]" : "text-gray-300")}>
-                          {groupCurrency && groupCurrency !== '$' 
-                            ? `${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'} ${groupCurrency}`
+                          {expenseCurrency && expenseCurrency !== '$' 
+                            ? `${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'} ${expenseCurrency}`
                             : `$${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'}`
                           }
                         </span>
