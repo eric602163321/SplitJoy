@@ -398,7 +398,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
           <div className="ios-card divide-y divide-[var(--color-ios-separator)]">
             <div className="p-4 flex items-center justify-between">
               <span className="font-bold text-gray-700">{t('version')}</span>
-              <span className="text-sm font-bold text-gray-400">1.0.0</span>
+              <span className="text-sm font-bold text-gray-400">2.0.0</span>
             </div>
             <div className="p-4 flex items-center justify-between">
               <span className="font-bold text-gray-700">SplitJoy</span>
