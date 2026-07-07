@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
+import { useData } from '../contexts/DataContext';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Group } from '../types';
 import { cn } from '../lib/utils';
@@ -33,7 +34,8 @@ export default function GroupScreen({
   onAddMember,
   onRemoveMember
 }: GroupScreenProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { user, joinSharedGroup, handleLogin } = useData();
   const [isCreating, setIsCreating] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [name, setName] = useState('');
@@ -41,6 +43,34 @@ export default function GroupScreen({
     const randomIndex = Math.floor(Math.random() * AVATARS.length);
     return AVATARS[randomIndex].id;
   });
+
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinGroupId, setJoinGroupId] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [isJoinLoading, setIsJoinLoading] = useState(false);
+
+  const handleJoinGroup = async () => {
+    if (!joinGroupId.trim()) return;
+    setIsJoinLoading(true);
+    setJoinError(null);
+    try {
+      const joined = await joinSharedGroup(joinGroupId.trim());
+      setSelectedGroupId(joined.id);
+      setIsJoining(false);
+      setJoinGroupId('');
+    } catch (err: any) {
+      console.error(err);
+      if (err.message === 'not_logged_in') {
+        setJoinError(i18n.language === 'zh' ? '請先登入 Google 帳號！' : 'Please log in with Google first!');
+      } else if (err.message === 'group_not_found') {
+        setJoinError(i18n.language === 'zh' ? '找不到此團體，請檢查代碼是否正確！' : 'Group not found, please check the code!');
+      } else {
+        setJoinError(i18n.language === 'zh' ? '加入失敗，請稍後再試！' : 'Failed to join group. Please try again!');
+      }
+    } finally {
+      setIsJoinLoading(false);
+    }
+  };
 
   const memberInputRef = useRef<HTMLInputElement>(null);
 
@@ -171,6 +201,86 @@ export default function GroupScreen({
                 ))}
               </AnimatePresence>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Join Shared Group Section */}
+      <section className="flex flex-col gap-2">
+        <div className="ios-card overflow-hidden">
+          <div className="p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[17px] font-bold text-black tracking-tight">
+                {i18n.language === 'zh' ? '加入共享團體' : 'Join Shared Group'}
+              </h2>
+              <button 
+                onClick={() => {
+                  setIsJoining(!isJoining);
+                  setJoinError(null);
+                }}
+                className="flex items-center gap-1 text-[15px] font-bold text-[#4285F4] active:opacity-50"
+              >
+                <Plus size={18} strokeWidth={3} className={isJoining ? "rotate-45 transition-transform" : "transition-transform"} />
+                <span>{isJoining ? t('cancel') : t('add_btn')}</span>
+              </button>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {isJoining && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden flex flex-col gap-4"
+                >
+                  {!user ? (
+                    <div className="flex flex-col gap-3 py-2">
+                      <p className="text-[13px] text-gray-500 leading-normal font-medium">
+                        {i18n.language === 'zh' 
+                          ? '💡 提示：加入共享團體需要先登入 Google 帳號，以便在多個裝置間即時同步帳單紀錄。' 
+                          : '💡 Tip: Joining shared groups requires logging in with a Google account to sync records in real time across devices.'}
+                      </p>
+                      <button 
+                        onClick={handleLogin}
+                        className="w-full h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                        <span>{t('login')}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      <input 
+                        type="text" 
+                        placeholder={i18n.language === 'zh' ? '請輸入團體邀請碼' : 'Enter group invite code'}
+                        value={joinGroupId}
+                        onChange={(e) => {
+                          setJoinGroupId(e.target.value);
+                          setJoinError(null);
+                        }}
+                        className="w-full bg-[#F2F2F7] border-none py-2.5 px-4 rounded-2xl text-[14px] placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all font-mono"
+                      />
+                      {joinError && (
+                        <p className="text-xs text-red-500 font-medium px-1">{joinError}</p>
+                      )}
+                      <button 
+                        onClick={handleJoinGroup} 
+                        disabled={!joinGroupId.trim() || isJoinLoading}
+                        className={cn(
+                          "w-full h-11 rounded-xl font-bold text-[14px] transition-all shadow-sm flex items-center justify-center",
+                          joinGroupId.trim() && !isJoinLoading
+                            ? "bg-[#4285F4] text-white active:opacity-70" 
+                            : "bg-[#A0CFFF] text-white opacity-80 cursor-not-allowed"
+                        )}
+                      >
+                        {isJoinLoading 
+                          ? (i18n.language === 'zh' ? '加入中...' : 'Joining...') 
+                          : (i18n.language === 'zh' ? '立即加入' : 'Join Now')}
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </section>

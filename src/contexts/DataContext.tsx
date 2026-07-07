@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup } from '../lib/firebaseUtils';
+import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup, joinGroup } from '../lib/firebaseUtils';
 import { Group, Member, Expense } from '../types';
 
 interface DataContextType {
@@ -36,6 +36,7 @@ interface DataContextType {
   addGroup: (group: Group) => Promise<void>;
   updateGroup: (group: Group) => Promise<void>;
   removeGroup: (id: string) => Promise<void>;
+  joinSharedGroup: (groupId: string) => Promise<Group>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -324,6 +325,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) await deleteGroup(id);
   }, [user]);
 
+  const joinSharedGroup = React.useCallback(async (groupId: string) => {
+    if (!user) throw new Error('not_logged_in');
+    const updatedGroup = await joinGroup(groupId, {
+      uid: user.uid,
+      displayName: user.displayName,
+      photoURL: user.photoURL
+    });
+    if (updatedGroup) {
+      setGroups(prev => {
+        if (prev.some(g => g.id === updatedGroup.id)) {
+          return prev.map(g => g.id === updatedGroup.id ? updatedGroup : g);
+        }
+        return [updatedGroup, ...prev];
+      });
+      return updatedGroup;
+    }
+    throw new Error('failed_to_join');
+  }, [user]);
+
   const contextValue = React.useMemo(() => ({
     user, 
     groups, 
@@ -341,6 +361,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addGroup, 
     updateGroup, 
     removeGroup,
+    joinSharedGroup,
     bgTexture, 
     setBgTexture, 
     fontSize, 
@@ -353,7 +374,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user, groups, personalExpenses, members, isAuthLoading, 
     hasLoadedPersonalFromCloud, hasLoadedGroupsFromCloud, authError,
     handleLogin, handleLogout, addPersonalExpense, addMember, 
-    removeMember, addGroup, updateGroup, removeGroup,
+    removeMember, addGroup, updateGroup, removeGroup, joinSharedGroup,
     bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage,
     defaultCurrency, setDefaultCurrency
   ]);

@@ -48,8 +48,10 @@ service cloud.firestore {
 
     // Shared Groups
     match /groups/{groupId} {
-      // Identity derivied from ownerId or memberIds array
-      allow read: if isSignedIn() && (
+      // Allow single document read (get) for any signed-in user who has the invite code
+      allow get: if isSignedIn();
+      // Allow querying/listing only if the user is a member
+      allow list: if isSignedIn() && (
         resource.data.ownerId == request.auth.uid || 
         request.auth.uid in resource.data.memberIds
       );
@@ -60,11 +62,13 @@ service cloud.firestore {
                     isValidGroup(incoming());
       
       allow update: if isSignedIn() && (
-        // Must be a member to update
-        (existing().ownerId == request.auth.uid || request.auth.uid in existing().memberIds) &&
-        isValidGroup(incoming()) &&
-        // Immutable check: Cannot transfer group ownership via simple update
-        incoming().ownerId == existing().ownerId
+        (
+          // Either they are already a member
+          (existing().ownerId == request.auth.uid || request.auth.uid in existing().memberIds) ||
+          // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
+          (incoming().memberIds.hasAll([request.auth.uid]) && incoming().ownerId == existing().ownerId)
+        ) &&
+        isValidGroup(incoming())
       );
       
       allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;

@@ -211,3 +211,44 @@ export const deleteGroup = async (groupId: string) => {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 };
+
+export const joinGroup = async (groupId: string, user: { uid: string, displayName: string | null, photoURL: string | null }) => {
+  const path = `groups/${groupId}`;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const docSnap = await getDoc(groupRef);
+    if (!docSnap.exists()) {
+      throw new Error('group_not_found');
+    }
+    const groupData = docSnap.data() as Group & { ownerId: string, memberIds: string[] };
+    
+    // Check if user is already a member
+    if (groupData.memberIds.includes(user.uid)) {
+      return groupData;
+    }
+
+    // Determine a random avatar index from 1 to 16
+    const avatarId = String(Math.floor(Math.random() * 16) + 1);
+
+    const newMember: Member = {
+      id: user.uid,
+      name: user.displayName || 'Google User',
+      avatar: avatarId
+    };
+
+    const updatedMembers = [...(groupData.members || []), newMember];
+    const updatedMemberIds = Array.from(new Set([...(groupData.memberIds || []), user.uid]));
+
+    // Update group details in Firestore
+    await updateDoc(groupRef, {
+      members: updatedMembers,
+      memberIds: updatedMemberIds
+    });
+
+    return { ...groupData, members: updatedMembers, memberIds: updatedMemberIds };
+  } catch (error: any) {
+    if (error.message === 'group_not_found') throw error;
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
