@@ -1,10 +1,9 @@
 {
-  "projectId": "named-bongo-2xhgq",
-  "appId": "1:777734980732:web:de623eb567e7b0e54ab5f9",
-  "apiKey": "AIzaSyDr-YP89XAKljz2fRde1Xy-1agRLR_B1Rg",
-  "authDomain": "named-bongo-2xhgq.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-splitjoy-c068c8c1-1963-4999-a7d5-4579ed608ea5",
-  "storageBucket": "named-bongo-2xhgq.firebasestorage.app",
-  "messagingSenderId": "777734980732",
-  "measurementId": ""
+  "projectId": "splitjoy-8b0f4",
+  "appId": "1:714023148358:web:4188d2c7ce505406ae6347",
+  "apiKey": "AIzaSyC4h85V8rODjLeGWO2Buro2T8tlBs90GZI",
+  "authDomain": "splitjoy-8b0f4.firebaseapp.com",
+  "storageBucket": "splitjoy-8b0f4.firebasestorage.app",
+  "messagingSenderId": "714023148358",
+  "measurementId": "G-3740E4KKEE"
 }

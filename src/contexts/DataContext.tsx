@@ -329,6 +329,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
           `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
         );
+      } else if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        setAuthError('提示：您已取消 Google 登入。如果需要使用雲端同步功能，請再次點擊登入。');
       } else {
         setAuthError(error.message || 'Login failed');
       }
