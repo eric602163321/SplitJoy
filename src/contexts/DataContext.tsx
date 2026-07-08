@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup, joinGroup } from '../lib/firebaseUtils';
 import { Group, Member, Expense } from '../types';
@@ -273,9 +273,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogin = React.useCallback(async () => {
     setAuthError(null);
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, new GoogleAuthProvider());
+      } else {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+      }
     } catch (error: any) {
-      setAuthError(error.message || 'Login failed');
+      if (error.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, new GoogleAuthProvider());
+        } catch (redirectError: any) {
+          setAuthError(redirectError.message || 'Login failed');
+        }
+      } else {
+        setAuthError(error.message || 'Login failed');
+      }
     }
   }, []);
 
