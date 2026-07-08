@@ -25,16 +25,30 @@ service cloud.firestore {
         ? data.get('ownerId', '') 
         : (data.get('members', null) is map && 'ownerId' in data.members ? data.members.ownerId : '');
     }
+    function getGroupName(data) {
+      return data.get('name', '') != '' 
+        ? data.get('name', '') 
+        : (data.get('members', null) is map && 'name' in data.members ? data.members.name : '');
+    }
+    function getMemberIds(data) {
+      return data.get('memberIds', null) is list 
+        ? data.get('memberIds', [])
+        : (getOwnerId(data) != '' ? [getOwnerId(data)] : []);
+    }
+    function isMemberOrOwner(data) {
+      return isSignedIn() && (
+        getOwnerId(data) == request.auth.uid || 
+        getMemberIds(data).hasAny([request.auth.uid])
+      );
+    }
     function isValidUserData(data) {
       return (data.get('personalExpenses', []) is list) &&
              (data.get('members', []) is list);
     }
     function isValidGroup(data) {
-      return data.id is string &&
-             data.name is string &&
-             data.ownerId is string &&
-             (data.memberIds is list) &&
-             (data.get('expenses', []) is list);
+      return getGroupName(data) is string &&
+             getOwnerId(data) is string &&
+             (getMemberIds(data) is list);
     }
 
     // --- 3. Collection Rules ---
@@ -56,22 +70,28 @@ service cloud.firestore {
       // Allow single document read (get) for any signed-in user who has the invite code
       allow get: if isSignedIn();
       // Allow querying/listing only if the user is a member
-      allow list: if isSignedIn() && (
-        getOwnerId(existing()) == request.auth.uid || 
-        existing().get('memberIds', []).hasAny([request.auth.uid])
-      );
+      allow list: if isSignedIn() && isMemberOrOwner(existing());
       
       allow create: if isSignedIn() && 
                     isValidId(groupId) && 
-                    getOwnerId(incoming()) == request.auth.uid;
+                    getOwnerId(incoming()) == request.auth.uid &&
+                    isValidGroup(incoming());
       
       allow update: if isSignedIn() && (
-        // Either they are already a member or the owner
-        (getOwnerId(existing()) == request.auth.uid || 
-         existing().get('memberIds', []).hasAny([request.auth.uid])) ||
-        // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
-        (incoming().get('memberIds', []).hasAny([request.auth.uid]) && 
-         getOwnerId(incoming()) == getOwnerId(existing()))
+        // Scenario A: Existing member or owner is updating details
+        (isMemberOrOwner(existing()) && 
+         getOwnerId(incoming()) == getOwnerId(existing()) &&
+         isValidGroup(incoming())) ||
+        // Scenario B: A new user is joining using the invite code
+        (
+          // They must add themselves to memberIds
+          incoming().get('memberIds', []).hasAny([request.auth.uid]) &&
+          // Owner, group name and expenses must remain unchanged (fully backward-compatible)
+          getOwnerId(incoming()) == getOwnerId(existing()) &&
+          getGroupName(incoming()) == getGroupName(existing()) &&
+          incoming().get('expenses', []) == existing().get('expenses', []) &&
+          isValidGroup(incoming())
+        )
       );
       
       allow delete: if isSignedIn() && getOwnerId(existing()) == request.auth.uid;

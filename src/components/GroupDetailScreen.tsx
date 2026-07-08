@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator, Pencil, Share2, Copy, Check } from 'lucide-react';
+import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator, Pencil, Share2, Copy, Check, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
@@ -28,6 +28,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   const [currentView, setCurrentView] = useState<'details' | 'settlement'>('details');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isInviteExpanded, setIsInviteExpanded] = useState(false);
   const dragControls = useDragControls();
 
   const handleCopyCode = () => {
@@ -287,82 +288,106 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         {/* Collaborative Invitation Card */}
         <section className="flex flex-col gap-2">
           <div className="ios-card overflow-hidden">
-            <div className="p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center">
-                  <Share2 size={16} className="text-[#4285F4]" />
+            <div className="p-4 sm:p-5 flex flex-col gap-4">
+              <button 
+                onClick={() => setIsInviteExpanded(!isInviteExpanded)}
+                className="flex items-center justify-between w-full text-left focus:outline-none select-none cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center shrink-0">
+                    <Share2 size={16} className="text-[#4285F4]" />
+                  </div>
+                  <h3 className="text-[16px] font-bold text-black tracking-tight">
+                    {i18n.language === 'zh' ? '邀請朋友共同編輯' : 'Invite Friends to Co-edit'}
+                  </h3>
                 </div>
-                <h3 className="text-[16px] font-bold text-black tracking-tight">
-                  {i18n.language === 'zh' ? '邀請朋友共同編輯' : 'Invite Friends to Co-edit'}
-                </h3>
-              </div>
+                <motion.div
+                  animate={{ rotate: isInviteExpanded ? 180 : 0 }}
+                  transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                  className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-[#8E8E93]"
+                >
+                  <ChevronDown size={18} />
+                </motion.div>
+              </button>
               
-              {user ? (
-                <div className="flex flex-col gap-3">
-                  <p className="text-[13px] text-gray-500 leading-normal font-medium">
-                    {i18n.language === 'zh' 
-                      ? '邀請朋友加入此團體，所有人都可以共同編輯、新增帳單與即時雲端同步！' 
-                      : 'Invite friends to this group. Everyone can add/edit expenses and sync in real time!'}
-                  </p>
-                  
-                  {/* Invite Code */}
-                  <div className="bg-[#F2F2F7] p-3 rounded-2xl flex items-center justify-between border border-gray-100">
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">
-                        {i18n.language === 'zh' ? '團體邀請碼' : 'Invite Code'}
-                      </span>
-                      <span className="text-[13px] font-mono font-bold text-black select-all break-all pr-2 truncate">
-                        {group.id}
-                      </span>
-                    </div>
-                    <button 
-                      onClick={handleCopyCode}
-                      className={cn(
-                        "p-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center",
-                        copiedCode ? "bg-[#34C759] text-white" : "bg-white hover:bg-gray-100 text-[#4285F4] shadow-sm border border-gray-100"
-                      )}
-                    >
-                      {copiedCode ? <Check size={16} strokeWidth={3} /> : <Copy size={16} strokeWidth={2.5} />}
-                    </button>
-                  </div>
-
-                  {/* Invite Link */}
-                  <div className="bg-[#F2F2F7] p-3 rounded-2xl flex items-center justify-between border border-gray-100">
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">
-                        {i18n.language === 'zh' ? '快速加入連結' : 'One-Click Join Link'}
-                      </span>
-                      <span className="text-[12px] text-gray-500 font-medium truncate max-w-[180px] sm:max-w-[280px]">
-                        {`${window.location.origin}?join=${group.id}`}
-                      </span>
-                    </div>
-                    <button 
-                      onClick={handleCopyLink}
-                      className={cn(
-                        "p-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center",
-                        copiedLink ? "bg-[#34C759] text-white" : "bg-white hover:bg-gray-100 text-[#4285F4] shadow-sm border border-gray-100"
-                      )}
-                    >
-                      {copiedLink ? <Check size={16} strokeWidth={3} /> : <Share2 size={16} strokeWidth={2.5} />}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <p className="text-[13px] text-gray-500 leading-normal font-medium">
-                    {i18n.language === 'zh' 
-                      ? '💡 提示：您目前使用的是「本機模式」。登入 Google 帳號後，即可開啟「雲端共同編輯」功能，與朋友一起即時記帳！' 
-                      : '💡 Tip: You are currently in local-only mode. Log in with Google to enable Cloud Co-editing and share bookkeeping with friends!'}
-                  </p>
-                  <button 
-                    onClick={handleLogin}
-                    className="w-full h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+              <AnimatePresence initial={false}>
+                {isInviteExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, marginTop: -16 }}
+                    animate={{ height: "auto", opacity: 1, marginTop: 0 }}
+                    exit={{ height: 0, opacity: 0, marginTop: -16 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                    className="overflow-hidden flex flex-col gap-4"
                   >
-                    <Users size={16} />
-                    <span>{t('login')}</span>
-                  </button>
-                </div>
-              )}
+                    {user ? (
+                      <div className="flex flex-col gap-3 pt-1">
+                        <p className="text-[13px] text-gray-500 leading-normal font-medium">
+                          {i18n.language === 'zh' 
+                            ? '邀請朋友加入此團體，所有人都可以共同編輯、新增帳單與即時雲端同步！' 
+                            : 'Invite friends to this group. Everyone can add/edit expenses and sync in real time!'}
+                        </p>
+                        
+                        {/* Invite Code */}
+                        <div className="bg-[#F2F2F7] p-3 rounded-2xl flex items-center justify-between border border-gray-100">
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">
+                              {i18n.language === 'zh' ? '團體邀請碼' : 'Invite Code'}
+                            </span>
+                            <span className="text-[13px] font-mono font-bold text-black select-all break-all pr-2 truncate">
+                              {group.id}
+                            </span>
+                          </div>
+                          <button 
+                            onClick={handleCopyCode}
+                            className={cn(
+                              "p-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center",
+                              copiedCode ? "bg-[#34C759] text-white" : "bg-white hover:bg-gray-100 text-[#4285F4] shadow-sm border border-gray-100"
+                            )}
+                          >
+                            {copiedCode ? <Check size={16} strokeWidth={3} /> : <Copy size={16} strokeWidth={2.5} />}
+                          </button>
+                        </div>
+
+                        {/* Invite Link */}
+                        <div className="bg-[#F2F2F7] p-3 rounded-2xl flex items-center justify-between border border-gray-100">
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">
+                              {i18n.language === 'zh' ? '快速加入連結' : 'One-Click Join Link'}
+                            </span>
+                            <span className="text-[12px] text-gray-500 font-medium truncate max-w-[180px] sm:max-w-[280px]">
+                              {`${window.location.origin}?join=${group.id}`}
+                            </span>
+                          </div>
+                          <button 
+                            onClick={handleCopyLink}
+                            className={cn(
+                              "p-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center",
+                              copiedLink ? "bg-[#34C759] text-white" : "bg-white hover:bg-gray-100 text-[#4285F4] shadow-sm border border-gray-100"
+                            )}
+                          >
+                            {copiedLink ? <Check size={16} strokeWidth={3} /> : <Share2 size={16} strokeWidth={2.5} />}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 pt-1">
+                        <p className="text-[13px] text-gray-500 leading-normal font-medium">
+                          {i18n.language === 'zh' 
+                            ? '💡 提示：您目前使用的是「本機模式」。登入 Google 帳號後，即可開啟「雲端共同編輯」功能，與朋友一起即時記帳！' 
+                            : '💡 Tip: You are currently in local-only mode. Log in with Google to enable Cloud Co-editing and share bookkeeping with friends!'}
+                        </p>
+                        <button 
+                          onClick={handleLogin}
+                          className="w-full h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Users size={16} />
+                          <span>{t('login')}</span>
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </section>

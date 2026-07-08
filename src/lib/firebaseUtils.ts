@@ -139,12 +139,24 @@ export const updateGroupDetails = async (groupId: string, data: Partial<Group>) 
 
     const updateData: any = { ...data };
     
-    // Migrate missing root-level ownerId and name to root level
+    // Migrate missing root-level fields to ensure schema correctness and backward compatibility
     if (ownerId && !updateData.ownerId) {
       updateData.ownerId = ownerId;
     }
     if (name && !updateData.name) {
       updateData.name = name;
+    }
+    if (!currentData.id && !updateData.id) {
+      updateData.id = groupId;
+    }
+    if (!currentData.currency && !updateData.currency) {
+      updateData.currency = currentData.currency || 'TWD';
+    }
+    if (!currentData.createdAt && !updateData.createdAt) {
+      updateData.createdAt = currentData.createdAt || new Date().toISOString();
+    }
+    if (!currentData.expenses && !updateData.expenses) {
+      updateData.expenses = Array.isArray(currentData.expenses) ? currentData.expenses : [];
     }
 
     if (data.members) {
@@ -311,13 +323,27 @@ export const joinGroup = async (groupId: string, user: { uid: string, displayNam
     const updatedMembers = [...membersArray, newMember];
     const updatedMemberIds = Array.from(new Set([...memberIds, user.uid]));
 
-    // Update group details in Firestore (migrates any stale/nested fields to root level)
-    await updateDoc(groupRef, {
+    const updateData: any = {
+      id: groupId,
       name,
       ownerId,
       members: updatedMembers,
       memberIds: updatedMemberIds
-    });
+    };
+
+    // Ensure currency, createdAt, and expenses are migrated to root level if missing
+    if (!rawData.currency) {
+      updateData.currency = rawData.currency || 'TWD';
+    }
+    if (!rawData.createdAt) {
+      updateData.createdAt = rawData.createdAt || new Date().toISOString();
+    }
+    if (!rawData.expenses) {
+      updateData.expenses = Array.isArray(rawData.expenses) ? rawData.expenses : [];
+    }
+
+    // Update group details in Firestore (migrates any stale/nested fields to root level)
+    await updateDoc(groupRef, updateData);
 
     return {
       id: groupId,
