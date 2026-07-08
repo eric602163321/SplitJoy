@@ -21,7 +21,9 @@ service cloud.firestore {
 
     // --- 2. Validation Blueprints ---
     function getOwnerId(data) {
-      return data.get('ownerId', data.get(['members', 'ownerId'], ''));
+      return data.get('ownerId', '') != '' 
+        ? data.get('ownerId', '') 
+        : (data.get('members', null) is map ? data.get(['members', 'ownerId'], '') : '');
     }
     function isValidUserData(data) {
       return (data.get('personalExpenses', []) is list) &&
