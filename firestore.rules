@@ -65,7 +65,7 @@ service cloud.firestore {
         (existing().get('ownerId', '') == request.auth.uid || 
          request.auth.uid in existing().get('memberIds', [])) ||
         // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
-        (incoming().get('memberIds', []).hasAll([request.auth.uid]) && 
+        (request.auth.uid in incoming().get('memberIds', []) && 
          incoming().get('ownerId', '') == existing().get('ownerId', ''))
       );
       
