@@ -52,23 +52,19 @@ service cloud.firestore {
       allow get: if isSignedIn();
       // Allow querying/listing only if the user is a member
       allow list: if isSignedIn() && (
-        resource.data.ownerId == request.auth.uid || 
-        request.auth.uid in resource.data.memberIds
+        existing().ownerId == request.auth.uid || 
+        request.auth.uid in existing().memberIds
       );
       
       allow create: if isSignedIn() && 
                     isValidId(groupId) && 
-                    incoming().ownerId == request.auth.uid &&
-                    isValidGroup(incoming());
+                    incoming().ownerId == request.auth.uid;
       
       allow update: if isSignedIn() && (
-        (
-          // Either they are already a member
-          (existing().ownerId == request.auth.uid || request.auth.uid in existing().memberIds) ||
-          // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
-          (incoming().memberIds.hasAll([request.auth.uid]) && incoming().ownerId == existing().ownerId)
-        ) &&
-        isValidGroup(incoming())
+        // Either they are already a member
+        (existing().ownerId == request.auth.uid || request.auth.uid in existing().memberIds) ||
+        // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
+        (incoming().memberIds.hasAll([request.auth.uid]) && incoming().ownerId == existing().ownerId)
       );
       
       allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
