@@ -111,9 +111,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error("[Auth] Redirect result error:", error);
         if (error.code === 'auth/unauthorized-domain') {
           setAuthError(
-            `轉址登入失敗：未授權的網域 (unauthorized-domain)。\n\n` +
-            `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
-            `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
+            `登入失敗：未授權的網域 (auth/unauthorized-domain)。\n\n` +
+            `🎉 您已成功將 App 設定為您的 Firebase 專案「${firebaseConfig.projectId}」！\n` +
+            `為了安全起見，您需要允許目前的測試網域進行 Google 登入。\n\n` +
+            `【解決步驟】：\n` +
+            `1. 進入您的 Firebase 控制台：\n` +
+            `   👉 https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers\n` +
+            `2. 點擊上方的「設定 (Settings)」頁籤。\n` +
+            `3. 點擊左側的「已授權網域 (Authorized domains)」。\n` +
+            `4. 點擊「新增網域 (Add domain)」，並貼上此網域：\n` +
+            `   🔹 ${window.location.hostname}\n` +
+            `5. 儲存後等候約 10~30 秒，重新整理此網頁再試一次即可成功登入！`
           );
         } else {
           setAuthError(error.message || 'Redirect sign-in failed');
@@ -315,9 +323,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Redirect fallback failed:", redirectError);
           if (redirectError.code === 'auth/unauthorized-domain') {
             setAuthError(
-              `登入失敗：未授權的網域 (unauthorized-domain)。\n\n` +
-              `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
-              `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
+              `登入失敗：未授權的網域 (auth/unauthorized-domain)。\n\n` +
+              `🎉 您已成功將 App 設定為您的 Firebase 專案「${firebaseConfig.projectId}」！\n` +
+              `為了安全起見，您需要允許目前的測試網域進行 Google 登入。\n\n` +
+              `【解決步驟】：\n` +
+              `1. 進入您的 Firebase 控制台：\n` +
+              `   👉 https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers\n` +
+              `2. 點擊上方的「設定 (Settings)」頁籤。\n` +
+              `3. 點擊左側的「已授權網域 (Authorized domains)」。\n` +
+              `4. 點擊「新增網域 (Add domain)」，並貼上此網域：\n` +
+              `   🔹 ${window.location.hostname}\n` +
+              `5. 儲存後等候約 10~30 秒，重新整理此網頁再試一次即可成功登入！`
             );
           } else {
             setAuthError(redirectError.message || 'Login failed');
@@ -325,9 +341,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else if (error.code === 'auth/unauthorized-domain') {
         setAuthError(
-          `登入失敗：未授權的網域 (unauthorized-domain)。\n\n` +
-          `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
-          `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
+          `登入失敗：未授權的網域 (auth/unauthorized-domain)。\n\n` +
+          `🎉 您已成功將 App 設定為您的 Firebase 專案「${firebaseConfig.projectId}」！\n` +
+          `為了安全起見，您需要允許目前的測試網域進行 Google 登入。\n\n` +
+          `【解決步驟】：\n` +
+          `1. 進入您的 Firebase 控制台：\n` +
+          `   👉 https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers\n` +
+          `2. 點擊上方的「設定 (Settings)」頁籤。\n` +
+          `3. 點擊左側的「已授權網域 (Authorized domains)」。\n` +
+          `4. 點擊「新增網域 (Add domain)」，並貼上此網域：\n` +
+          `   🔹 ${window.location.hostname}\n` +
+          `5. 儲存後等候約 10~30 秒，重新整理此網頁再試一次即可成功登入！`
         );
       } else if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
         setAuthError('提示：您已取消 Google 登入。如果需要使用雲端同步功能，請再次點擊登入。');
