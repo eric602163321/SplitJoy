@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup, joinGroup } from '../lib/firebaseUtils';
 import { Group, Member, Expense } from '../types';
@@ -95,19 +95,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => { currentMembers.current = members; }, [members]);
   useEffect(() => { currentGroups.current = groups; }, [groups]);
 
-  // Auth Observer
+  // Auth Observer & Redirect Result
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setIsAuthLoading(false);
-      setHasLoadedPersonalFromCloud(false);
-      setHasLoadedGroupsFromCloud(false);
-      isFirstGroupsLoad.current = true;
-      isFirstPersonalLoad.current = true;
-      lastReceivedPersonalExpenses.current = '';
-      lastReceivedMembers.current = '';
-    });
-    return () => unsubscribe();
+    let unsubscribe: (() => void) | null = null;
+    
+    const initAuth = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          console.log("[Auth] Signed in via redirect:", result.user);
+          setUser(result.user);
+        }
+      } catch (error: any) {
+        console.error("[Auth] Redirect result error:", error);
+        setAuthError(error.message || 'Redirect sign-in failed');
+      } finally {
+        unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          setIsAuthLoading(false);
+          setHasLoadedPersonalFromCloud(false);
+          setHasLoadedGroupsFromCloud(false);
+          isFirstGroupsLoad.current = true;
+          isFirstPersonalLoad.current = true;
+          lastReceivedPersonalExpenses.current = '';
+          lastReceivedMembers.current = '';
+        });
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Sync Groups
@@ -273,22 +293,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogin = React.useCallback(async () => {
     setAuthError(null);
     try {
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      if (isMobile) {
+      const userAgent = navigator.userAgent || '';
+      const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) || 
+                       (navigator.maxTouchPoints > 0) || 
+                       (window.innerWidth <= 800);
+      const isInApp = /FBAN|FBAV|Instagram|Line|LineApp|MicroMessenger|WeChat/i.test(userAgent);
+
+      // If Safari, Mobile, or In-App Browser, ALWAYS use signInWithRedirect synchronously
+      if (isMobile || isSafari || isInApp) {
         await signInWithRedirect(auth, new GoogleAuthProvider());
       } else {
         await signInWithPopup(auth, new GoogleAuthProvider());
       }
     } catch (error: any) {
-      if (error.code === 'auth/popup-blocked') {
-        try {
-          await signInWithRedirect(auth, new GoogleAuthProvider());
-        } catch (redirectError: any) {
-          setAuthError(redirectError.message || 'Login failed');
-        }
-      } else {
-        setAuthError(error.message || 'Login failed');
-      }
+      console.error("Login failed:", error);
+      setAuthError(error.message || 'Login failed');
     }
   }, []);
 
