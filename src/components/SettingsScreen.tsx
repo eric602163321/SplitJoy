@@ -254,7 +254,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
               className="mx-2 p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-600"
             >
               <AlertCircle size={18} className="shrink-0 mt-0.5" />
-              <p className="text-xs font-bold leading-relaxed">{error}</p>
+              <p className="text-xs font-bold leading-relaxed whitespace-pre-line">{error}</p>
             </motion.div>
           )}
 

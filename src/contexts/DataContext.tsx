@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup, joinGroup } from '../lib/firebaseUtils';
 import { Group, Member, Expense } from '../types';
 
@@ -108,7 +109,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (error: any) {
         console.error("[Auth] Redirect result error:", error);
-        setAuthError(error.message || 'Redirect sign-in failed');
+        if (error.code === 'auth/unauthorized-domain') {
+          setAuthError(
+            `轉址登入失敗：未授權的網域 (unauthorized-domain)。\n\n` +
+            `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
+            `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
+          );
+        } else {
+          setAuthError(error.message || 'Redirect sign-in failed');
+        }
       } finally {
         unsubscribe = onAuthStateChanged(auth, (currentUser) => {
           setUser(currentUser);
@@ -293,22 +302,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogin = React.useCallback(async () => {
     setAuthError(null);
     try {
-      const userAgent = navigator.userAgent || '';
-      const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) || 
-                       (navigator.maxTouchPoints > 0) || 
-                       (window.innerWidth <= 800);
-      const isInApp = /FBAN|FBAV|Instagram|Line|LineApp|MicroMessenger|WeChat/i.test(userAgent);
-
-      // If Safari, Mobile, or In-App Browser, ALWAYS use signInWithRedirect synchronously
-      if (isMobile || isSafari || isInApp) {
-        await signInWithRedirect(auth, new GoogleAuthProvider());
-      } else {
-        await signInWithPopup(auth, new GoogleAuthProvider());
-      }
+      // Always try popup login first, as it is highly reliable and avoids cross-site cookie restrictions
+      await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (error: any) {
-      console.error("Login failed:", error);
-      setAuthError(error.message || 'Login failed');
+      console.error("Popup login failed:", error);
+      
+      if (error.code === 'auth/popup-blocked') {
+        try {
+          console.log("Popup blocked. Trying signInWithRedirect as fallback...");
+          await signInWithRedirect(auth, new GoogleAuthProvider());
+        } catch (redirectError: any) {
+          console.error("Redirect fallback failed:", redirectError);
+          if (redirectError.code === 'auth/unauthorized-domain') {
+            setAuthError(
+              `登入失敗：未授權的網域 (unauthorized-domain)。\n\n` +
+              `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
+              `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
+            );
+          } else {
+            setAuthError(redirectError.message || 'Login failed');
+          }
+        }
+      } else if (error.code === 'auth/unauthorized-domain') {
+        setAuthError(
+          `登入失敗：未授權的網域 (unauthorized-domain)。\n\n` +
+          `您目前正透過自訂網域 (${window.location.hostname}) 進行測試，但專案仍使用預設的臨時 Firebase 專案 (${firebaseConfig.projectId})。\n\n` +
+          `【解決方案】：請在您的程式碼 (firebase-applet-config.json) 中替換為您自己的 Firebase 專案配置，並在您自己的 Firebase 控制台「授權網域」中新增您的網域 (${window.location.hostname})。`
+        );
+      } else {
+        setAuthError(error.message || 'Login failed');
+      }
     }
   }, []);
 
