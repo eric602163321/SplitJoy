@@ -52,22 +52,24 @@ service cloud.firestore {
       allow get: if isSignedIn();
       // Allow querying/listing only if the user is a member
       allow list: if isSignedIn() && (
-        existing().ownerId == request.auth.uid || 
-        request.auth.uid in existing().memberIds
+        existing().get('ownerId', '') == request.auth.uid || 
+        request.auth.uid in existing().get('memberIds', [])
       );
       
       allow create: if isSignedIn() && 
                     isValidId(groupId) && 
-                    incoming().ownerId == request.auth.uid;
+                    incoming().get('ownerId', '') == request.auth.uid;
       
       allow update: if isSignedIn() && (
-        // Either they are already a member
-        (existing().ownerId == request.auth.uid || request.auth.uid in existing().memberIds) ||
+        // Either they are already a member or the owner
+        (existing().get('ownerId', '') == request.auth.uid || 
+         request.auth.uid in existing().get('memberIds', [])) ||
         // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
-        (incoming().memberIds.hasAll([request.auth.uid]) && incoming().ownerId == existing().ownerId)
+        (incoming().get('memberIds', []).hasAll([request.auth.uid]) && 
+         incoming().get('ownerId', '') == existing().get('ownerId', ''))
       );
       
-      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().get('ownerId', '') == request.auth.uid;
     }
   }
 }
