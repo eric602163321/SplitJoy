@@ -23,7 +23,7 @@ service cloud.firestore {
     function getOwnerId(data) {
       return data.get('ownerId', '') != '' 
         ? data.get('ownerId', '') 
-        : (data.get('members', null) is map ? data.get(['members', 'ownerId'], '') : '');
+        : (data.get('members', null) is map && 'ownerId' in data.members ? data.members.ownerId : '');
     }
     function isValidUserData(data) {
       return (data.get('personalExpenses', []) is list) &&
