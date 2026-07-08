@@ -53,7 +53,7 @@ service cloud.firestore {
       // Allow querying/listing only if the user is a member
       allow list: if isSignedIn() && (
         existing().get('ownerId', '') == request.auth.uid || 
-        request.auth.uid in existing().get('memberIds', [])
+        existing().get('memberIds', []).hasAny([request.auth.uid])
       );
       
       allow create: if isSignedIn() && 
@@ -63,9 +63,9 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         // Either they are already a member or the owner
         (existing().get('ownerId', '') == request.auth.uid || 
-         request.auth.uid in existing().get('memberIds', [])) ||
+         existing().get('memberIds', []).hasAny([request.auth.uid])) ||
         // Or they are joining: adding themselves to memberIds, and ownerId remains unchanged
-        (request.auth.uid in incoming().get('memberIds', []) && 
+        (incoming().get('memberIds', []).hasAny([request.auth.uid]) && 
          incoming().get('ownerId', '') == existing().get('ownerId', ''))
       );
       
