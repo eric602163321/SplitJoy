@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
 import AvatarGrid, { AVATARS } from './AvatarGrid';
 import { Member, Group } from '../types';
-import { cn } from '../lib/utils';
+import { cn, generateGroupId, extractInviteCode } from '../lib/utils';
 import GroupList from './GroupList';
 import CreateGroupForm from './CreateGroupForm';
 import GroupDetailScreen from './GroupDetailScreen';
@@ -15,26 +15,26 @@ interface GroupScreenProps {
   groups: Group[];
   selectedGroupId: string | null;
   setSelectedGroupId: (id: string | null) => void;
-  onAddGroup: (group: Group) => void;
-  onDeleteGroup: (id: string) => void;
-  onUpdateGroup: (group: Group) => void;
+  onAddGroup: (group: Group) => Promise<void> | void;
+  onDeleteGroup: (id: string) => Promise<void> | void;
+  onUpdateGroup: (group: Group) => Promise<void> | void;
   members: Member[];
   onAddMember: (m: Member) => void;
   onRemoveMember: (id: string) => void;
 }
 
-export default function GroupScreen({ 
-  groups, 
-  selectedGroupId, 
-  setSelectedGroupId, 
-  onAddGroup, 
-  onDeleteGroup, 
+export default function GroupScreen({
+  groups,
+  selectedGroupId,
+  setSelectedGroupId,
+  onAddGroup,
+  onDeleteGroup,
   onUpdateGroup,
   members,
   onAddMember,
   onRemoveMember
 }: GroupScreenProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user, joinSharedGroup, handleLogin } = useData();
   const [isCreating, setIsCreating] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -48,24 +48,36 @@ export default function GroupScreen({
   const [joinGroupId, setJoinGroupId] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoinLoading, setIsJoinLoading] = useState(false);
+  const [groupActionError, setGroupActionError] = useState<string | null>(null);
 
-  const handleJoinGroup = async () => {
-    if (!joinGroupId.trim()) return;
+  const handleJoinGroup = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = joinGroupId.trim();
+    if (!trimmed || isJoinLoading) return;
+
+    const extracted = extractInviteCode(trimmed);
+    if (!extracted) {
+      setJoinError(t('err_group_not_found'));
+      return;
+    }
+
     setIsJoinLoading(true);
     setJoinError(null);
     try {
-      const joined = await joinSharedGroup(joinGroupId.trim());
+      const joined = await joinSharedGroup(extracted);
       setSelectedGroupId(joined.id);
       setIsJoining(false);
       setJoinGroupId('');
     } catch (err: any) {
       console.error(err);
       if (err.message === 'not_logged_in') {
-        setJoinError(i18n.language === 'zh' ? '請先登入 Google 帳號！' : 'Please log in with Google first!');
+        setJoinError(t('err_not_logged_in'));
       } else if (err.message === 'group_not_found') {
-        setJoinError(i18n.language === 'zh' ? '找不到此團體，請檢查代碼是否正確！' : 'Group not found, please check the code!');
+        setJoinError(t('err_group_not_found'));
+      } else if (err.message === 'group_full') {
+        setJoinError(t('err_group_full'));
       } else {
-        setJoinError(i18n.language === 'zh' ? '加入失敗，請稍後再試！' : 'Failed to join group. Please try again!');
+        setJoinError(t('err_join_failed'));
       }
     } finally {
       setIsJoinLoading(false);
@@ -90,19 +102,40 @@ export default function GroupScreen({
   const handleAddMember = () => {
     if (!name.trim()) return;
     onAddMember({
-      id: Date.now().toString(),
+      id: `mem_${generateGroupId(10)}`,
       name: name.trim(),
       avatar: selectedAvatarId,
     });
     setName('');
-    
+
     const randomIndex = Math.floor(Math.random() * AVATARS.length);
     setSelectedAvatarId(AVATARS[randomIndex].id);
   };
 
+  const handleDeleteGroupSafe = async (id: string) => {
+    setGroupActionError(null);
+    try {
+      await onDeleteGroup(id);
+    } catch (err) {
+      console.error('Delete group failed:', err);
+      setGroupActionError(t('err_delete_failed'));
+    }
+  };
+
+  const handleAddGroupSafe = async (g: Group) => {
+    setGroupActionError(null);
+    try {
+      await onAddGroup(g);
+      setIsCreating(false);
+    } catch (err) {
+      console.error('Create group failed:', err);
+      setGroupActionError(t('err_save_failed'));
+    }
+  };
+
   if (selectedGroup) {
     return (
-      <GroupDetailScreen 
+      <GroupDetailScreen
         group={selectedGroup}
         onUpdateGroup={onUpdateGroup}
         onBack={() => setSelectedGroupId(null)}
@@ -113,11 +146,8 @@ export default function GroupScreen({
 
   if (isCreating) {
     return (
-      <CreateGroupForm 
-        onAddGroup={(g) => {
-          onAddGroup(g);
-          setIsCreating(false);
-        }}
+      <CreateGroupForm
+        onAddGroup={handleAddGroupSafe}
         onCancel={() => setIsCreating(false)}
       />
     );
@@ -125,17 +155,23 @@ export default function GroupScreen({
 
   return (
     <div className="flex flex-col gap-6 pb-12">
-      <ScreenHeader 
-        title={t('group_list')} 
+      <ScreenHeader
+        title={t('group_list')}
         subtitle={t('overview')}
       />
+
+      {groupActionError && (
+        <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-bold">
+          {groupActionError}
+        </div>
+      )}
 
       <section className="flex flex-col gap-2">
         <div className="ios-card overflow-hidden">
           <div className="p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="text-[17px] font-bold text-black tracking-tight">{t('members')}</h2>
-              <button 
+              <button
                 onClick={() => setIsAddingMember(!isAddingMember)}
                 className="flex items-center gap-1 text-[15px] font-bold text-[#4285F4] active:opacity-50"
               >
@@ -154,22 +190,22 @@ export default function GroupScreen({
                 >
                   <AvatarGrid selectedId={selectedAvatarId} onSelect={setSelectedAvatarId} />
                   <div className="flex flex-col gap-3">
-                    <input 
+                    <input
                       ref={memberInputRef}
-                      type="text" 
+                      type="text"
                       autoFocus
                       placeholder={t('name_placeholder')}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       className="w-full bg-[#F2F2F7] border-none py-2.5 px-4 rounded-2xl text-[14px] placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-[#4285F4] transition-all"
                     />
-                    <button 
-                      onClick={handleAddMember} 
+                    <button
+                      onClick={handleAddMember}
                       disabled={!name.trim()}
                       className={cn(
                         "w-full py-2.5 rounded-2xl font-bold text-[15px] transition-all shadow-sm",
-                        name.trim() 
-                          ? "bg-[#4285F4] text-white active:opacity-70" 
+                        name.trim()
+                          ? "bg-[#4285F4] text-white active:opacity-70"
                           : "bg-[#A0CFFF] text-white opacity-80 cursor-not-allowed"
                       )}
                     >
@@ -183,7 +219,7 @@ export default function GroupScreen({
             <div className="flex flex-wrap gap-2">
               <AnimatePresence>
                 {members.map((member) => (
-                  <motion.div 
+                  <motion.div
                     key={member.id}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -211,9 +247,9 @@ export default function GroupScreen({
           <div className="p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="text-[17px] font-bold text-black tracking-tight">
-                {i18n.language === 'zh' ? '加入共享團體' : 'Join Shared Group'}
+                {t('join_shared_group')}
               </h2>
-              <button 
+              <button
                 onClick={() => {
                   setIsJoining(!isJoining);
                   setJoinError(null);
@@ -236,11 +272,9 @@ export default function GroupScreen({
                   {!user ? (
                     <div className="flex flex-col gap-3 py-2">
                       <p className="text-[13px] text-gray-500 leading-normal font-medium">
-                        {i18n.language === 'zh' 
-                          ? '💡 提示：加入共享團體需要先登入 Google 帳號，以便在多個裝置間即時同步帳單紀錄。' 
-                          : '💡 Tip: Joining shared groups requires logging in with a Google account to sync records in real time across devices.'}
+                        {t('join_login_tip')}
                       </p>
-                      <button 
+                      <button
                         onClick={handleLogin}
                         className="w-full h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
@@ -248,10 +282,10 @@ export default function GroupScreen({
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-3">
-                      <input 
-                        type="text" 
-                        placeholder={i18n.language === 'zh' ? '請輸入團體邀請碼' : 'Enter group invite code'}
+                    <form onSubmit={handleJoinGroup} className="flex flex-col gap-3">
+                      <input
+                        type="text"
+                        placeholder={t('enter_invite_code')}
                         value={joinGroupId}
                         onChange={(e) => {
                           setJoinGroupId(e.target.value);
@@ -262,21 +296,19 @@ export default function GroupScreen({
                       {joinError && (
                         <p className="text-xs text-red-500 font-medium px-1">{joinError}</p>
                       )}
-                      <button 
-                        onClick={handleJoinGroup} 
+                      <button
+                        type="submit"
                         disabled={!joinGroupId.trim() || isJoinLoading}
                         className={cn(
                           "w-full h-11 rounded-xl font-bold text-[14px] transition-all shadow-sm flex items-center justify-center",
                           joinGroupId.trim() && !isJoinLoading
-                            ? "bg-[#4285F4] text-white active:opacity-70" 
+                            ? "bg-[#4285F4] text-white active:opacity-70"
                             : "bg-[#A0CFFF] text-white opacity-80 cursor-not-allowed"
                         )}
                       >
-                        {isJoinLoading 
-                          ? (i18n.language === 'zh' ? '加入中...' : 'Joining...') 
-                          : (i18n.language === 'zh' ? '立即加入' : 'Join Now')}
+                        {isJoinLoading ? t('joining') : t('join_now')}
                       </button>
-                    </div>
+                    </form>
                   )}
                 </motion.div>
               )}
@@ -284,11 +316,12 @@ export default function GroupScreen({
           </div>
         </div>
       </section>
-      
-      <GroupList 
+
+      <GroupList
         groups={groups}
+        currentUserId={user?.uid}
         onSelectGroup={setSelectedGroupId}
-        onDeleteGroup={onDeleteGroup}
+        onDeleteGroup={handleDeleteGroupSafe}
         onStartCreate={() => setIsCreating(true)}
         onUpdateGroup={onUpdateGroup}
       />

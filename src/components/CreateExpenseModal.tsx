@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Check, Calendar } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Member, Expense, SplitType, SplitDetail } from '../types';
 import { CATEGORIES } from '../constants';
-import { cn, getCategoryLabel } from '../lib/utils';
+import { cn, getCategoryLabel, generateGroupId } from '../lib/utils';
 import { AVATARS } from './AvatarGrid';
 import CurrencyPickerModal from './CurrencyPickerModal';
 
@@ -17,25 +17,51 @@ interface CreateExpenseModalProps {
   groupCurrency?: string;
 }
 
+function toLocalDateInputValue(isoOrDate?: string): string {
+  const d = isoOrDate ? new Date(isoOrDate) : new Date();
+  if (isNaN(d.getTime())) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function buildIsoFromDateInput(dateStr: string, originalIso?: string): string {
+  if (originalIso && toLocalDateInputValue(originalIso) === dateStr) {
+    return originalIso;
+  }
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return new Date().toISOString();
+  const now = new Date();
+  const local = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+  return local.toISOString();
+}
+
 export default function CreateExpenseModal({ isOpen, onClose, members, onSave, initialExpense, groupCurrency }: CreateExpenseModalProps) {
   const { t, i18n } = useTranslation();
   const [totalAmount, setTotalAmount] = useState<string>('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
+  const [expenseDate, setExpenseDate] = useState(() => toLocalDateInputValue());
   const [category, setCategory] = useState(CATEGORIES[0].id);
   const [payerId, setPayerId] = useState(members[0]?.id || '');
   const [splitType, setSplitType] = useState<SplitType>('equal');
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
   const [selectedSplitMemberIds, setSelectedSplitMemberIds] = useState<string[]>([]);
 
-  // Individual currency states
   const [expenseCurrency, setExpenseCurrency] = useState('TWD');
   const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
 
   const amountRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (members.length > 0 && !payerId) {
+    if (members.length > 0 && (!payerId || !members.some(m => m.id === payerId))) {
       setPayerId(members[0].id);
     }
   }, [members, payerId]);
@@ -49,17 +75,25 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
         setDescription(initialExpense.description);
         setNotes(initialExpense.notes || '');
+        setExpenseDate(toLocalDateInputValue(initialExpense.date));
         setCategory(initialExpense.category);
-        setPayerId(initialExpense.payerId);
+        const validPayer = members.some(m => m.id === initialExpense.payerId)
+          ? initialExpense.payerId
+          : (members[0]?.id || '');
+        setPayerId(validPayer);
         setSplitType(initialExpense.splitType);
-        
+
         const activeIds = initialExpense.splits.filter(s => s.amount > 0).map(s => s.memberId);
         setSelectedSplitMemberIds(activeIds);
-        
+
         const initialWeights: Record<string, string> = {};
         members.forEach(m => {
-          const split = initialExpense.splits.find(s => s.memberId === m.id);
-          initialWeights[m.id] = split ? split.amount.toString() : '1';
+          if (initialExpense.splitWeights && initialExpense.splitWeights[m.id] !== undefined) {
+            initialWeights[m.id] = initialExpense.splitWeights[m.id].toString();
+          } else {
+            const split = initialExpense.splits.find(s => s.memberId === m.id);
+            initialWeights[m.id] = split && split.amount > 0 ? split.amount.toString() : '0';
+          }
         });
         setCustomSplits(initialWeights);
       } else {
@@ -68,6 +102,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
         setTotalAmount('');
         setDescription('');
         setNotes('');
+        setExpenseDate(toLocalDateInputValue());
         setCategory(CATEGORIES[0].id);
         setSplitType('equal');
         setSelectedSplitMemberIds(members.map(m => m.id));
@@ -80,7 +115,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
         });
         setCustomSplits(initialSplits);
       }
-      
+
       const timer = setTimeout(() => {
         if (amountRef.current) {
           amountRef.current.focus();
@@ -135,7 +170,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
     } else {
       const weights = members.map(m => selectedSplitMemberIds.includes(m.id) ? (parseFloat(customSplits[m.id]) || 0) : 0);
       const sumWeights = weights.reduce((a, b) => a + b, 0);
-      
+
       return members.map((m, i) => ({
         memberId: m.id,
         amount: sumWeights > 0 && selectedSplitMemberIds.includes(m.id) ? (total * weights[i]) / sumWeights : 0
@@ -144,23 +179,35 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
   };
 
   const splits = calculateBreakdown();
-  const isValid = parseFloat(totalAmount) > 0 && splits.length > 0;
+  const hasPositiveSplit = splits.some(s => s.amount > 0);
+  const isValid = getBaseAmount() > 0 && hasPositiveSplit && Boolean(payerId);
 
   const handleSave = () => {
     if (!isValid) return;
-    
+
+    const finalDescription = description.trim() || getCategoryLabel(category, t, i18n);
+    const weightsPayload: Record<string, number> | undefined =
+      splitType === 'custom'
+        ? members.reduce((acc, m) => {
+            acc[m.id] = selectedSplitMemberIds.includes(m.id) ? (parseFloat(customSplits[m.id]) || 0) : 0;
+            return acc;
+          }, {} as Record<string, number>)
+        : undefined;
+
     const newExpense: Expense = {
-      id: initialExpense?.id || Date.now().toString(),
+      id: initialExpense?.id || `exp_${generateGroupId(12)}`,
       totalAmount: getBaseAmount(),
-      description,
-      notes,
+      description: finalDescription,
+      notes: notes.trim(),
       category,
-      date: initialExpense?.date || new Date().toISOString(),
+      date: buildIsoFromDateInput(expenseDate, initialExpense?.date),
       payerId,
       splitType,
       splits,
       originalAmount: getBaseAmount(),
       originalCurrency: expenseCurrency,
+      ...(weightsPayload ? { splitWeights: weightsPayload } : {}),
+      ...(initialExpense?.createdBy ? { createdBy: initialExpense.createdBy } : {})
     };
     onSave(newExpense);
     onClose();
@@ -170,15 +217,15 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
       />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
@@ -189,9 +236,9 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
         <div className="sticky top-0 bg-[var(--color-ios-bg)]/80 backdrop-blur-md px-6 py-4 pt-6 flex justify-between items-center border-b border-[var(--color-ios-separator)] z-[100]">
           <button onClick={onClose} className="text-[var(--color-ios-blue)] text-[15px] font-medium">{t('cancel')}</button>
-          <span className="text-[17px] font-bold">{t('add_expense')}</span>
-          <button 
-            onClick={handleSave} 
+          <span className="text-[17px] font-bold">{initialExpense ? t('edit') : t('add_expense')}</span>
+          <button
+            onClick={handleSave}
             disabled={!isValid}
             className={cn(
               "text-[var(--color-ios-blue)] text-[15px] font-bold",
@@ -219,9 +266,9 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                 ) : (
                   <span className="text-2xl font-bold mr-2 text-slate-400">$</span>
                 )}
-                <input 
+                <input
                   ref={amountRef}
-                  type="text" 
+                  type="text"
                   inputMode="decimal"
                   pattern="[0-9]*"
                   autoFocus
@@ -238,14 +285,28 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
             <div className="flex flex-col gap-2">
               <span className="text-[11px] font-bold text-[var(--color-ios-grey)] uppercase px-1">{t('highest_category')}</span>
               <div className="ios-card flex flex-col">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder={t('expense_item_placeholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="ios-grouped-item w-full outline-none text-[15px] border-b border-gray-100" 
+                  className="ios-grouped-item w-full outline-none text-[15px] border-b border-gray-100"
                 />
-                <textarea 
+                <div className="ios-grouped-item w-full border-b border-gray-100">
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Calendar size={16} className="text-[#4285F4]" />
+                    <span className="text-[14px] font-semibold text-gray-700">{t('expense_date')}</span>
+                  </div>
+                  <input
+                    type="date"
+                    value={expenseDate}
+                    onChange={(e) => {
+                      if (e.target.value) setExpenseDate(e.target.value);
+                    }}
+                    className="text-[14px] font-bold text-[#007AFF] bg-transparent outline-none text-right cursor-pointer"
+                  />
+                </div>
+                <textarea
                   placeholder={t('notes_placeholder')}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -282,8 +343,8 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                     onClick={() => setPayerId(m.id)}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all",
-                      payerId === m.id 
-                        ? "bg-[var(--color-ios-blue)] text-white shadow-md" 
+                      payerId === m.id
+                        ? "bg-[var(--color-ios-blue)] text-white shadow-md"
                         : "bg-[#F2F2F7] text-slate-500"
                     )}
                   >
@@ -301,12 +362,12 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
             <div className="flex flex-col gap-2">
               <div className="flex items-center px-1">
                 <div className="flex bg-[#F2F2F7] rounded-lg p-1 w-full">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setSplitType('equal')}
                     className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'equal' ? "bg-white shadow-sm text-black" : "text-slate-400")}
                   >{t('all_split')}</button>
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setSplitType('custom')}
                     className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", splitType === 'custom' ? "bg-white shadow-sm text-black" : "text-slate-400")}
@@ -318,8 +379,8 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                 {members.map(m => {
                   const isSelected = selectedSplitMemberIds.includes(m.id);
                   return (
-                    <div 
-                      key={m.id} 
+                    <div
+                      key={m.id}
                       className={cn(
                         "ios-grouped-item py-4 cursor-pointer active:bg-gray-50 transition-colors",
                         !isSelected && "bg-gray-50/30"
@@ -340,7 +401,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                       </div>
                       <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                         {splitType === 'custom' && (
-                          <input 
+                          <input
                             type="number"
                             placeholder={t('ratio_placeholder')}
                             disabled={!isSelected}
@@ -353,7 +414,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                           />
                         )}
                         <span className={cn("text-[15px] font-bold w-26 text-right transition-colors whitespace-nowrap", isSelected ? "text-[var(--color-ios-blue)]" : "text-gray-300")}>
-                          {expenseCurrency && expenseCurrency !== '$' 
+                          {expenseCurrency && expenseCurrency !== '$'
                             ? `${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'} ${expenseCurrency}`
                             : `$${splits.find(s => s.memberId === m.id)?.amount.toFixed(1) || '0.0'}`
                           }
@@ -375,7 +436,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
         onClose={() => setIsCurrencyPickerOpen(false)}
         selectedCode={expenseCurrency}
         onSelect={handleSelectCurrency}
-        title={i18n.language === 'zh' ? '選擇此筆帳單幣別' : 'Bill Currency'}
+        title={t('bill_currency_title')}
       />
     </div>
   );

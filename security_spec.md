@@ -2,27 +2,22 @@
 
 ## Data Invariants
 1. A user can only read and write their own profile document (`/users/{userId}`).
-2. A group can only be read by its members.
-3. A group can only be modified (update members/expenses) by its members.
-4. Only the owner of a group (`ownerId`) can delete it.
-5. All IDs must be valid strings and reasonably sized.
-6. Timestamps should ideally be server-managed but we use ISO strings locally for now; we'll enforce basic string type.
+2. Group expense subcollection documents (`/groups/{groupId}/expenses/{expenseId}`) can only be read, created, updated, or deleted by verified members or the owner of `/groups/{groupId}`.
+3. Group metadata (`/groups/{groupId}`) uses high-entropy random IDs (12+ chars) and can only be listed by existing members (`isMemberOrOwner`).
+4. Joining a group via invite code (`Scenario B`) can only append the authenticated user (`request.auth.uid`) to `memberIds` and `members` without removing existing members or modifying `ownerId`, `name`, `currency`, `createdAt`, `id`, or `expenses`.
+5. Only the owner of a group (`ownerId`) can delete it.
+6. All document IDs, strings, numbers, and arrays are strictly bounded in type, keys (`hasOnly`), and size.
 
 ## The "Dirty Dozen" Payloads (Test Scenarios)
 1. **Unauthorized User Read**: Authenticated user attempts to read another user's profile. (Expected: DENIED)
 2. **Unauthorized User Write**: Authenticated user attempts to write to another user's profile. (Expected: DENIED)
-3. **Non-Member Group Read**: Authenticated user attempts to read a group they are not a member of. (Expected: DENIED)
-4. **Non-Member Group Update**: Authenticated user attempts to add an expense to a group they are not in. (Expected: DENIED)
-5. **Non-Owner Group Delete**: A member (not owner) attempts to delete a group. (Expected: DENIED)
-6. **Anonymous Group Write**: Unauthenticated user attempts to create a group. (Expected: DENIED)
-7. **Malicious Document ID**: Attempting to create a document with a 2KB ID. (Expected: DENIED via size limits)
-8. **Owner Spoofing**: User A attempts to create a group but sets `ownerId` to User B. (Expected: DENIED)
-9. **Private Path Access**: Attempting to access `/_admin_data/config`. (Expected: DENIED)
-10. **Shadow Field Injection**: Adding `isAdmin: true` to a user profile update. (Expected: DENIED via future schema hardening)
-11. **Empty Member List**: Creating a group with no members. (Expected: DENIED via validation)
-12. **Foreign Currency Attack**: Updating a group's currency to an extremely long string. (Expected: DENIED)
-
-## Implementation Plan
-- Use `request.auth.uid` for identity.
-- Use `get()` in rules to check group membership for group updates.
-- Use `request.resource.data` to validate document shape on creation.
+3. **Non-Member Group List**: Authenticated user attempts to list groups they are not a member of. (Expected: DENIED)
+4. **Non-Member Expense Read/Write**: Authenticated user with only `groupId` attempts to read or write `/groups/{groupId}/expenses/{expenseId}` before joining. (Expected: DENIED)
+5. **Non-Member Member-Removal Attack (Join Hijack)**: User B attempts to join via Scenario B while removing existing member User A from `memberIds` or `members`. (Expected: DENIED)
+6. **Non-Owner Group Delete**: A member (not owner) attempts to delete a group. (Expected: DENIED)
+7. **Anonymous Group/Expense Write**: Unauthenticated user attempts to create a group or expense. (Expected: DENIED)
+8. **Malicious Document ID**: Attempting to create a document with a 2KB ID or invalid characters. (Expected: DENIED via `isValidId`)
+9. **Owner Spoofing**: User A attempts to create a group with `ownerId` set to User B, or change `ownerId` on update. (Expected: DENIED)
+10. **Private Path Access**: Attempting to access `/_admin_data/config`. (Expected: DENIED)
+11. **Shadow Field Injection**: Adding `isAdmin: true` to `/users/{userId}`, `/groups/{groupId}`, or `/groups/{groupId}/expenses/{expenseId}`. (Expected: DENIED via `hasOnly`)
+12. **Resource Poisoning**: Updating a group name, currency, or expense description with an oversized string or negative amount. (Expected: DENIED via size/value checks)

@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User as UserType } from 'firebase/auth';
-import { LogIn, LogOut, User as UserIcon, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X, Languages, Coins } from 'lucide-react';
+import { LogIn, LogOut, Shield, ChevronRight, AlertCircle, Palette, Check, Type, X, Languages, Coins } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
 import { ScreenHeader } from './SharedUI';
@@ -120,7 +120,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, onLogin, onLogout
                 <div className="w-full bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl">
                   <div className="p-4 text-center border-b border-gray-200">
                     <p className="text-[13px] text-[#8E8E93] font-medium leading-tight">
-                      {'確定要登出嗎？資料已儲存在雲端。'}
+                      {t('confirm_logout')}
                     </p>
                   </div>
                   <button 

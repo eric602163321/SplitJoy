@@ -1,35 +1,100 @@
-import React, { useState } from 'react';
-import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, CheckCircle2, Trash2, X, Calculator, Pencil, Share2, Copy, Check, ChevronDown } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from 'motion/react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Users, ReceiptText, ArrowLeft, UserPlus, Calculator, Share2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, Pencil, X } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { useData } from '../contexts/DataContext';
-import AvatarGrid, { AVATARS } from './AvatarGrid';
+import { AVATARS } from './AvatarGrid';
 import { Member, Expense, Group } from '../types';
 import CreateExpenseModal from './CreateExpenseModal';
+import CurrencyPickerModal from './CurrencyPickerModal';
 import StatsScreen from './StatsScreen';
 import SwipeableExpenseItem from './SwipeableExpenseItem';
-import { CATEGORIES } from '../constants';
 import { ScreenHeader, SectionTitle, EmptyState } from './SharedUI';
-import { cn, getCategoryById } from '../lib/utils';
+import { cn } from '../lib/utils';
+import { syncGroupExpenses, migrateLegacyExpensesIfNeeded } from '../lib/firebaseUtils';
 
 interface GroupDetailScreenProps {
   group: Group;
-  onUpdateGroup: (group: Group) => void;
+  onUpdateGroup: (group: Group) => Promise<void> | void;
   onBack: () => void;
   allMembers: Member[];
 }
 
 export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMembers }: GroupDetailScreenProps) {
-  const { t, i18n } = useTranslation();
-  const { user, handleLogin } = useData();
+  const { t } = useTranslation();
+  const { user, handleLogin, saveGroupExpense, removeGroupExpense } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
   const [isManagingMembers, setIsManagingMembers] = useState(false);
+  const [isEditingGroup, setIsEditingGroup] = useState(false);
+  const [editedGroupName, setEditedGroupName] = useState(group.name);
+  const [editedGroupCurrency, setEditedGroupCurrency] = useState(group.currency);
+  const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [currentView, setCurrentView] = useState<'details' | 'settlement'>('details');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isInviteExpanded, setIsInviteExpanded] = useState(false);
+  const [cloudExpenses, setCloudExpenses] = useState<Expense[] | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const dragControls = useDragControls();
+
+  // Subscribe to subcollection expenses when signed in & auto-migrate legacy array if present
+  useEffect(() => {
+    setCloudExpenses(null);
+    if (!user) {
+      return;
+    }
+
+    if (group.expenses && group.expenses.length > 0) {
+      migrateLegacyExpensesIfNeeded(group.id, group.expenses).catch(err => {
+        console.error('Legacy expenses migration failed:', err);
+      });
+    }
+
+    const unsubscribe = syncGroupExpenses(
+      group.id,
+      (items) => {
+        setCloudExpenses(items);
+      },
+      (err) => {
+        console.error('Group expenses listener error:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid, group.id]);
+
+  // Combine subcollection expenses with legacy expenses fallback during migration
+  const activeExpenses: Expense[] = useMemo(() => {
+    if (!user) return group.expenses;
+    if (cloudExpenses === null) return group.expenses;
+    if (cloudExpenses.length === 0 && group.expenses.length > 0) return group.expenses;
+    return cloudExpenses;
+  }, [user, cloudExpenses, group.expenses]);
+
+  // Merge user's local member presets and current group members (so cloud collaborators appear in Manage Members)
+  const selectableMembers: Member[] = useMemo(() => {
+    const map = new Map<string, Member>();
+    group.members.forEach(m => map.set(m.id, m));
+    allMembers.forEach(m => {
+      if (!map.has(m.id)) map.set(m.id, m);
+    });
+    return Array.from(map.values());
+  }, [group.members, allMembers]);
+
+  // Members referenced in existing bills cannot be removed without breaking settlement math
+  const referencedMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    activeExpenses.forEach(exp => {
+      if (exp.payerId) ids.add(exp.payerId);
+      exp.splits.forEach(s => {
+        if (s.amount > 0) ids.add(s.memberId);
+      });
+    });
+    return ids;
+  }, [activeExpenses]);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(group.id).then(() => {
@@ -56,36 +121,41 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
     }
   };
 
-  const toggleMemberInGroup = (member: Member) => {
+  const toggleMemberInGroup = async (member: Member) => {
+    setActionError(null);
     const isAlreadyInGroup = group.members.some(m => m.id === member.id);
-    let updatedMembers;
-    
-    if (isAlreadyInGroup) {
-      updatedMembers = group.members.filter(m => m.id !== member.id);
-    } else {
-      updatedMembers = [...group.members, member];
+
+    if (isAlreadyInGroup && referencedMemberIds.has(member.id)) {
+      setActionError(t('err_member_has_bills'));
+      setTimeout(() => setActionError(null), 3500);
+      return;
     }
 
-    onUpdateGroup({
-      ...group,
-      members: updatedMembers
-    });
+    const updatedMembers = isAlreadyInGroup
+      ? group.members.filter(m => m.id !== member.id)
+      : [...group.members, member];
+
+    try {
+      await onUpdateGroup({
+        ...group,
+        members: updatedMembers
+      });
+    } catch (err) {
+      console.error('Failed to update group members:', err);
+      setActionError(t('err_save_failed'));
+    }
   };
 
-  const handleSaveExpense = (e: Expense) => {
-    if (editingExpense) {
-      onUpdateGroup({
-        ...group,
-        expenses: group.expenses.map(old => old.id === editingExpense.id ? e : old)
-      });
+  const handleSaveExpense = async (e: Expense) => {
+    setActionError(null);
+    try {
+      await saveGroupExpense(group.id, e);
       setEditingExpense(null);
-    } else {
-      onUpdateGroup({
-        ...group,
-        expenses: [...group.expenses, e]
-      });
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Failed to save group expense:', err);
+      setActionError(t('err_save_failed'));
     }
-    setIsModalOpen(false);
   };
 
   const handleEditExpense = (exp: Expense) => {
@@ -93,16 +163,53 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
     setIsModalOpen(true);
   };
 
-  const handleDeleteExpense = (id: string) => {
-    onUpdateGroup({
-      ...group,
-      expenses: group.expenses.filter(e => e.id !== id)
-    });
+  const handleDeleteExpense = async (id: string) => {
+    setActionError(null);
+    try {
+      await removeGroupExpense(group.id, id);
+    } catch (err) {
+      console.error('Failed to delete group expense:', err);
+      setActionError(t('err_save_failed'));
+    }
+  };
+
+  const openEditGroupModal = () => {
+    setEditedGroupName(group.name);
+    setEditedGroupCurrency(group.currency);
+    setActionError(null);
+    setIsEditingGroup(true);
+  };
+
+  const handleSaveGroupEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = editedGroupName.trim();
+    if (!trimmedName || isSavingGroup) return;
+
+    if (trimmedName === group.name && editedGroupCurrency === group.currency) {
+      setIsEditingGroup(false);
+      return;
+    }
+
+    setIsSavingGroup(true);
+    setActionError(null);
+    try {
+      await onUpdateGroup({
+        ...group,
+        name: trimmedName,
+        currency: editedGroupCurrency
+      });
+      setIsEditingGroup(false);
+    } catch (err) {
+      console.error('Failed to update group details:', err);
+      setActionError(t('err_save_failed'));
+    } finally {
+      setIsSavingGroup(false);
+    }
   };
 
   if (currentView === 'settlement') {
     return (
-      <motion.div 
+      <motion.div
         drag="x"
         dragControls={dragControls}
         dragListener={false}
@@ -122,8 +229,8 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         style={{ touchAction: 'pan-y' }}
       >
         <header className="px-1 pt-8 flex items-center gap-4">
-          <button 
-            onClick={() => setCurrentView('details')} 
+          <button
+            onClick={() => setCurrentView('details')}
             className="flex items-center gap-2 text-[#4285F4] font-bold active:scale-95 transition-all"
           >
             <ArrowLeft size={24} strokeWidth={2.5} />
@@ -131,10 +238,11 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
           </button>
         </header>
 
-        <StatsScreen 
-          members={group.members} 
-          expenses={group.expenses} 
-          groupName={group.name} 
+        <StatsScreen
+          members={group.members}
+          expenses={activeExpenses}
+          groupId={group.id}
+          groupName={group.name}
           currentCurrency={group.currency}
         />
       </motion.div>
@@ -142,7 +250,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   }
 
   return (
-    <motion.div 
+    <motion.div
       drag={isDeepView ? false : "x"}
       dragControls={dragControls}
       dragListener={false}
@@ -161,11 +269,11 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       className="flex flex-col gap-6 pb-24 min-h-screen bg-transparent touch-action-none sm:touch-pan-y"
       style={{ touchAction: 'pan-y' }}
     >
-      <ScreenHeader 
+      <ScreenHeader
         title={group.name}
         subtitle={currentView === 'details' ? t('group_expenses') : t('settlement_stats')}
         leftAction={
-          <button 
+          <button
             onClick={handleBack}
             className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm active:scale-95 transition-all"
           >
@@ -174,18 +282,42 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         }
         rightAction={
           currentView === 'details' && (
-            <button 
-              onClick={() => setIsManagingMembers(!isManagingMembers)}
-              className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all",
-                isManagingMembers ? "bg-[#EBF4FF] text-[#4285F4]" : "bg-white text-gray-500"
-              )}
-            >
-              <UserPlus size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openEditGroupModal}
+                aria-label={t('edit_group')}
+                className="w-10 h-10 rounded-full bg-white text-gray-500 flex items-center justify-center shadow-sm active:scale-95 transition-all"
+              >
+                <Pencil size={18} />
+              </button>
+              <button
+                onClick={() => setIsManagingMembers(!isManagingMembers)}
+                aria-label={t('manage')}
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all",
+                  isManagingMembers ? "bg-[#EBF4FF] text-[#4285F4]" : "bg-white text-gray-500"
+                )}
+              >
+                <UserPlus size={20} />
+              </button>
+            </div>
           )
         }
       />
+
+      <AnimatePresence>
+        {actionError && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs font-bold"
+          >
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{actionError}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-col gap-8">
         {/* Member List Card */}
@@ -211,13 +343,14 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                       exit={{ opacity: 0, height: 0 }}
                       className="flex flex-col gap-1 bg-gray-50/50 rounded-2xl p-2 overflow-hidden"
                     >
-                      {allMembers.length === 0 ? (
+                      {selectableMembers.length === 0 ? (
                         <div className="py-4 px-2 text-center text-xs text-[#8E8E93]">
                           {t('add_global_members_first')}
                         </div>
                       ) : (
-                        allMembers.map((member) => {
+                        selectableMembers.map((member) => {
                           const isSelected = group.members.some(m => m.id === member.id);
+                          const isLocked = isSelected && referencedMemberIds.has(member.id);
                           return (
                             <button
                               key={member.id}
@@ -237,12 +370,18 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                                 )}>
                                   {member.name}
                                 </span>
+                                {isLocked && (
+                                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                    {t('member_has_bills_tag')}
+                                  </span>
+                                )}
                               </div>
                               <div className={cn(
                                 "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-                                isSelected 
-                                  ? "bg-[#4285F4] border-[#4285F4] scale-100" 
-                                  : "border-gray-200 bg-transparent"
+                                isSelected
+                                  ? "bg-[#4285F4] border-[#4285F4] scale-100"
+                                  : "border-gray-200 bg-transparent",
+                                isLocked && "opacity-60"
                               )}>
                                 {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
                               </div>
@@ -262,7 +401,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                         <span className="text-[12px] text-[#8E8E93] font-medium px-1">{t('select_members_first')}</span>
                       ) : (
                         group.members.map((member) => (
-                          <motion.div 
+                          <motion.div
                             key={member.id}
                             layout
                             initial={{ opacity: 0, scale: 0.8 }}
@@ -289,7 +428,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         <section className="flex flex-col gap-2">
           <div className="ios-card overflow-hidden">
             <div className="p-4 sm:p-5 flex flex-col gap-4">
-              <button 
+              <button
                 onClick={() => setIsInviteExpanded(!isInviteExpanded)}
                 className="flex items-center justify-between w-full text-left focus:outline-none select-none cursor-pointer"
               >
@@ -298,7 +437,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                     <Share2 size={16} className="text-[#4285F4]" />
                   </div>
                   <h3 className="text-[16px] font-bold text-black tracking-tight">
-                    {i18n.language === 'zh' ? '邀請朋友共同編輯' : 'Invite Friends to Co-edit'}
+                    {t('invite_friends_coedit')}
                   </h3>
                 </div>
                 <motion.div
@@ -309,7 +448,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                   <ChevronDown size={18} />
                 </motion.div>
               </button>
-              
+
               <AnimatePresence initial={false}>
                 {isInviteExpanded && (
                   <motion.div
@@ -322,22 +461,20 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                     {user ? (
                       <div className="flex flex-col gap-3 pt-1">
                         <p className="text-[13px] text-gray-500 leading-normal font-medium">
-                          {i18n.language === 'zh' 
-                            ? '邀請朋友加入此團體，所有人都可以共同編輯、新增帳單與即時雲端同步！' 
-                            : 'Invite friends to this group. Everyone can add/edit expenses and sync in real time!'}
+                          {t('invite_friends_desc')}
                         </p>
-                        
+
                         {/* Invite Code */}
                         <div className="bg-[#F2F2F7] p-3 rounded-2xl flex items-center justify-between border border-gray-100">
                           <div className="flex flex-col gap-0.5 min-w-0">
                             <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">
-                              {i18n.language === 'zh' ? '團體邀請碼' : 'Invite Code'}
+                              {t('invite_code')}
                             </span>
                             <span className="text-[13px] font-mono font-bold text-black select-all break-all pr-2 truncate">
                               {group.id}
                             </span>
                           </div>
-                          <button 
+                          <button
                             onClick={handleCopyCode}
                             className={cn(
                               "p-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center",
@@ -352,13 +489,13 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                         <div className="bg-[#F2F2F7] p-3 rounded-2xl flex items-center justify-between border border-gray-100">
                           <div className="flex flex-col gap-0.5 min-w-0">
                             <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">
-                              {i18n.language === 'zh' ? '快速加入連結' : 'One-Click Join Link'}
+                              {t('quick_join_link')}
                             </span>
                             <span className="text-[12px] text-gray-500 font-medium truncate max-w-[180px] sm:max-w-[280px]">
                               {`${window.location.origin}?join=${group.id}`}
                             </span>
                           </div>
-                          <button 
+                          <button
                             onClick={handleCopyLink}
                             className={cn(
                               "p-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center",
@@ -372,11 +509,9 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                     ) : (
                       <div className="flex flex-col gap-3 pt-1">
                         <p className="text-[13px] text-gray-500 leading-normal font-medium">
-                          {i18n.language === 'zh' 
-                            ? '💡 提示：您目前使用的是「本機模式」。登入 Google 帳號後，即可開啟「雲端共同編輯」功能，與朋友一起即時記帳！' 
-                            : '💡 Tip: You are currently in local-only mode. Log in with Google to enable Cloud Co-editing and share bookkeeping with friends!'}
+                          {t('local_mode_invite_tip')}
                         </p>
-                        <button 
+                        <button
                           onClick={handleLogin}
                           className="w-full h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
                         >
@@ -397,7 +532,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
           <SectionTitle title={t('group_expenses')} />
 
           <div className="flex gap-2 px-1">
-            <button 
+            <button
               disabled={group.members.length === 0}
               onClick={() => setIsModalOpen(true)}
               className="flex-[2.5] h-11 bg-[#4285F4] text-white rounded-xl font-bold text-[14px] shadow-sm shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
@@ -405,8 +540,8 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
               <Plus size={18} strokeWidth={2.5} />
               <span>{t('add_bill')}</span>
             </button>
-            <button 
-              disabled={group.expenses.length === 0}
+            <button
+              disabled={activeExpenses.length === 0}
               onClick={() => setCurrentView('settlement')}
               className="flex-1 h-11 bg-[#F2F2F7] text-[#4285F4] rounded-xl font-bold text-[14px] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
             >
@@ -417,8 +552,8 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
 
           <div className="ios-card overflow-hidden">
             <AnimatePresence mode="popLayout" initial={false}>
-              {group.expenses.length === 0 ? (
-                <EmptyState 
+              {activeExpenses.length === 0 ? (
+                <EmptyState
                   icon={ReceiptText}
                   title={t('no_bill')}
                   description={group.members.length > 0 ? t('start_splitting') : t('add_members_first')}
@@ -426,16 +561,18 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
                 />
               ) : (
                 <div className="flex flex-col divide-y divide-gray-50">
-                  {group.expenses.slice().reverse().map((exp) => (
-                    <SwipeableExpenseItem 
-                      key={exp.id} 
-                      exp={exp} 
+                  {activeExpenses.slice().reverse().map((exp) => (
+                    <SwipeableExpenseItem
+                      key={exp.id}
+                      exp={exp}
                       onDelete={handleDeleteExpense}
                       onEdit={handleEditExpense}
                       currency={group.currency}
                       showPayer={true}
                       payerEmoji={AVATARS.find(a => a.id === group.members.find(m => m.id === exp.payerId)?.avatar)?.emoji || "👤"}
                       payerName={group.members.find(m => m.id === exp.payerId)?.name || ""}
+                      activeSwipeId={activeSwipeId}
+                      onSwipeChange={setActiveSwipeId}
                     />
                   ))}
                 </div>
@@ -445,7 +582,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         </section>
       </div>
 
-      <CreateExpenseModal 
+      <CreateExpenseModal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
@@ -455,6 +592,103 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         onSave={handleSaveExpense}
         initialExpense={editingExpense || undefined}
         groupCurrency={group.currency}
+      />
+
+      {/* Edit Group Modal */}
+      <AnimatePresence>
+        {isEditingGroup && (
+          <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isSavingGroup && setIsEditingGroup(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            />
+            <motion.form
+              onSubmit={handleSaveGroupEdit}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="relative bg-[var(--color-ios-bg)] w-full max-w-lg rounded-t-[24px] sm:rounded-[24px] shadow-2xl overflow-hidden pb-8 sm:pb-6"
+            >
+              <div className="p-4 flex justify-between items-center border-b border-[var(--color-ios-separator)] bg-white/80 backdrop-blur-md">
+                <span className="text-[17px] font-bold ml-2">{t('edit_group')}</span>
+                <button
+                  type="button"
+                  disabled={isSavingGroup}
+                  onClick={() => setIsEditingGroup(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:scale-90 transition-all"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              <div className="p-4 flex flex-col gap-5">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider px-1">
+                    {t('group_name')}
+                  </label>
+                  <div className="ios-card px-4 py-3">
+                    <input
+                      type="text"
+                      value={editedGroupName}
+                      onChange={(e) => setEditedGroupName(e.target.value)}
+                      placeholder={t('group_name_placeholder')}
+                      maxLength={80}
+                      required
+                      className="w-full bg-transparent text-[16px] font-bold text-black outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider px-1">
+                    {t('default_currency')}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCurrencyPickerOpen(true)}
+                    className="ios-card px-4 py-3.5 flex items-center justify-between active:bg-gray-50 transition-colors"
+                  >
+                    <span className="text-[15px] font-bold text-black">{t('change_settlement_currency')}</span>
+                    <div className="flex items-center gap-1.5 text-[var(--color-ios-blue)] font-bold">
+                      <span>{editedGroupCurrency}</span>
+                      <ChevronRight size={16} className="text-[#C7C7CC]" />
+                    </div>
+                  </button>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    disabled={isSavingGroup}
+                    onClick={() => setIsEditingGroup(false)}
+                    className="flex-1 h-12 rounded-2xl bg-white text-gray-600 font-bold text-[15px] border border-gray-200 active:scale-95 transition-all"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!editedGroupName.trim() || isSavingGroup}
+                    className="flex-1 h-12 rounded-2xl bg-[var(--color-ios-blue)] text-white font-bold text-[15px] shadow-md shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-40"
+                  >
+                    {t('save')}
+                  </button>
+                </div>
+              </div>
+            </motion.form>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <CurrencyPickerModal
+        isOpen={isCurrencyPickerOpen}
+        onClose={() => setIsCurrencyPickerOpen(false)}
+        selectedCode={editedGroupCurrency}
+        onSelect={setEditedGroupCurrency}
+        title={t('change_settlement_currency')}
       />
     </motion.div>
   );

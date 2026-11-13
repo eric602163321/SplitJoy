@@ -24,12 +24,15 @@ export interface Expense {
   originalAmount?: number;
   originalCurrency?: string;
   exchangeRate?: number;
+  splitWeights?: Record<string, number>;
+  createdBy?: string;
 }
 
 export interface Group {
   id: string;
   name: string;
   members: Member[];
+  memberIds?: string[];
   expenses: Expense[];
   currency: string;
   createdAt: string;

@@ -1,15 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Sparkles, ChevronRight, BarChart3, ArrowLeft, TrendingUp, ChevronDown, Trash2, Pencil } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform, animate, useDragControls } from 'motion/react';
+import { Plus, BarChart3, ArrowLeft, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Expense, Member } from '../types';
-import { CATEGORIES, RETRO_COLORS } from '../constants';
 import { AVATARS } from './AvatarGrid';
 import CreateExpenseModal from './CreateExpenseModal';
 import PersonalAnalysisView from './PersonalAnalysisView';
 import SwipeableExpenseItem from './SwipeableExpenseItem';
 import { ScreenHeader, SectionTitle, ValueCard, SortMenu, EmptyState } from './SharedUI';
-import { cn, getCategoryById, getCategoryLabel, isExpenseInCategory, getMonthLabel, groupExpensesByMonth, calculateCategoryData, calculateMonthlyTrend } from '../lib/utils';
+import { cn, getMonthLabel, groupExpensesByMonth, calculateCategoryData, calculateMonthlyTrend } from '../lib/utils';
+import { getFallbackExchangeRate, fetchExchangeRate } from '../lib/exchangeRates';
 import { useData } from '../contexts/DataContext';
 
 interface PersonalScreenProps {
@@ -22,6 +22,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
   const { defaultCurrency } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -33,7 +34,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     return `${now.getFullYear()}/${now.getMonth() + 1}`;
   });
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-  
+
   const dragControls = useDragControls();
 
   useEffect(() => {
@@ -58,11 +59,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     expenses.forEach(exp => {
       const code = exp.originalCurrency;
       if (code && code !== defaultCurrency) {
-        if (code === 'JPY' && defaultCurrency === 'TWD') initial[code] = 0.22;
-        else if (code === 'TWD' && defaultCurrency === 'JPY') initial[code] = 4.55;
-        else if (code === 'USD' && defaultCurrency === 'TWD') initial[code] = 32.5;
-        else if (code === 'TWD' && defaultCurrency === 'USD') initial[code] = 0.031;
-        else initial[code] = 1.0;
+        initial[code] = getFallbackExchangeRate(code, defaultCurrency);
       }
     });
     return initial;
@@ -79,40 +76,39 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     return Array.from(curs);
   }, [expenses, defaultCurrency]);
 
+  const lastBaseRef = useRef<string>(defaultCurrency);
   const fetchedRef = useRef<Record<string, boolean>>({});
   const loadingRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
-    // Reset fetched status when base currency changes
-    const lastBaseRef = { current: defaultCurrency };
     if (lastBaseRef.current !== defaultCurrency) {
       fetchedRef.current = {};
       loadingRef.current = {};
       lastBaseRef.current = defaultCurrency;
+      setExchangeRates(() => {
+        const resetRates: Record<string, number> = {};
+        uniqueForeignCurrencies.forEach(code => {
+          resetRates[code] = getFallbackExchangeRate(code, defaultCurrency);
+        });
+        return resetRates;
+      });
     }
 
     uniqueForeignCurrencies.forEach(code => {
       setExchangeRates(prev => {
         if (prev[code] !== undefined) return prev;
-        const next = { ...prev };
-        if (code === 'JPY' && defaultCurrency === 'TWD') next[code] = 0.22;
-        else if (code === 'TWD' && defaultCurrency === 'JPY') next[code] = 4.55;
-        else if (code === 'USD' && defaultCurrency === 'TWD') next[code] = 32.5;
-        else if (code === 'TWD' && defaultCurrency === 'USD') next[code] = 0.031;
-        else next[code] = 1.0;
-        return next;
+        return {
+          ...prev,
+          [code]: getFallbackExchangeRate(code, defaultCurrency)
+        };
       });
 
       if (!fetchedRef.current[code] && !loadingRef.current[code]) {
         loadingRef.current[code] = true;
-        fetch(`https://open.er-api.com/v6/latest/${code}`)
-          .then(res => {
-            if (!res.ok) throw new Error('Fetch failed');
-            return res.json();
-          })
-          .then(data => {
-            if (data && data.rates && data.rates[defaultCurrency]) {
-              const rawRate = data.rates[defaultCurrency];
+        const targetBase = defaultCurrency;
+        fetchExchangeRate(code, targetBase)
+          .then(rawRate => {
+            if (lastBaseRef.current === targetBase && rawRate !== null) {
               setExchangeRates(prev => ({
                 ...prev,
                 [code]: rawRate
@@ -121,7 +117,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
             }
           })
           .catch(err => {
-            console.error(`Failed to fetch personal rate for ${code} into ${defaultCurrency}:`, err);
+            console.error(`Failed to fetch personal rate for ${code} into ${targetBase}:`, err);
           })
           .finally(() => {
             loadingRef.current[code] = false;
@@ -144,18 +140,34 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     });
   }, [expenses, defaultCurrency, exchangeRates]);
 
+  const filteredAnalysisExpenses = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return convertedExpenses.filter(exp => {
+      if (statsTimeRange === 'all') return true;
+      const expDate = new Date(exp.date);
+      if (statsTimeRange === 'current') {
+        return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
+      }
+      const [selYear, selMonth] = statsSelectedMonth.split('/').map(Number);
+      return expDate.getMonth() === (selMonth - 1) && expDate.getFullYear() === selYear;
+    });
+  }, [convertedExpenses, statsTimeRange, statsSelectedMonth]);
+
   const sortedExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => {
       if (sortType === 'date_desc') return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortType === 'date_asc') return new Date(a.date).getTime() - new Date(b.date).getTime();
-      
+
       const getConvertedAmount = (exp: Expense) => {
         const cur = exp.originalCurrency || defaultCurrency;
         if (cur === defaultCurrency) return exp.totalAmount;
         const rate = exchangeRates[cur] || 1.0;
         return exp.totalAmount * rate;
       };
-      
+
       if (sortType === 'amount_desc') return getConvertedAmount(b) - getConvertedAmount(a);
       if (sortType === 'amount_asc') return getConvertedAmount(a) - getConvertedAmount(b);
       return 0;
@@ -177,7 +189,6 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     }, 0);
   }, [groupedExpenses, defaultCurrency, exchangeRates]);
 
-  // Track expanded months. Initialized with current month.
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
     const now = new Date();
     return new Set([`${now.getFullYear()}/${now.getMonth() + 1}`]);
@@ -192,24 +203,9 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
     });
   };
 
-
   const categoryData = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    const filteredExpenses = convertedExpenses.filter(exp => {
-      if (statsTimeRange === 'all') return true;
-      const expDate = new Date(exp.date);
-      if (statsTimeRange === 'current') {
-        return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
-      }
-      const [selYear, selMonth] = statsSelectedMonth.split('/').map(Number);
-      return expDate.getMonth() === (selMonth - 1) && expDate.getFullYear() === selYear;
-    });
-
-    return calculateCategoryData(filteredExpenses, t, i18n);
-  }, [convertedExpenses, i18n.language, statsTimeRange, statsSelectedMonth, t]);
+    return calculateCategoryData(filteredAnalysisExpenses, t, i18n);
+  }, [filteredAnalysisExpenses, i18n, i18n.language, t]);
 
   const monthlyTrendData = useMemo(() => {
     return calculateMonthlyTrend(convertedExpenses);
@@ -235,7 +231,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
 
   if (showAnalysis) {
     return (
-      <motion.div 
+      <motion.div
         drag="x"
         dragControls={dragControls}
         dragListener={false}
@@ -258,7 +254,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         style={{ touchAction: 'pan-y' }}
       >
         <header className="px-1 pt-8 flex items-center gap-4">
-          <button 
+          <button
             onClick={() => setShowAnalysis(false)}
             className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm active:scale-95 transition-all"
           >
@@ -270,9 +266,8 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
           </div>
         </header>
 
-        {/* Stats View */}
         {isReady && (
-          <PersonalAnalysisView 
+          <PersonalAnalysisView
             categoryData={categoryData}
             monthlyTrendData={monthlyTrendData}
             statsTimeRange={statsTimeRange}
@@ -282,7 +277,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
             isMonthPickerOpen={isMonthPickerOpen}
             setIsMonthPickerOpen={setIsMonthPickerOpen}
             groupedExpenses={groupedExpenses}
-            expenses={convertedExpenses}
+            expenses={filteredAnalysisExpenses}
             expandedCategoryId={expandedCategoryId}
             setExpandedCategoryId={setExpandedCategoryId}
             currency={defaultCurrency}
@@ -297,21 +292,21 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
       <ScreenHeader title={t('personal')} />
 
       <div className="flex flex-col gap-6">
-        <ValueCard 
-          label={t('monthly_total')} 
-          value={currentMonthTotal.toLocaleString()} 
+        <ValueCard
+          label={t('monthly_total')}
+          value={currentMonthTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
           currency={defaultCurrency}
         />
 
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="flex-[2] ios-btn-primary flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
           >
             <Plus size={20} strokeWidth={3} />
             {t('add_expense')}
           </button>
-          <button 
+          <button
             onClick={() => setShowAnalysis(true)}
             className="flex-1 bg-white border border-gray-100 rounded-2xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
           >
@@ -321,10 +316,10 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         </div>
 
         <section className="flex flex-col gap-3 pb-24">
-          <SectionTitle 
+          <SectionTitle
             title={t('recent_records')}
             rightAction={
-              <SortMenu 
+              <SortMenu
                 isOpen={isSortOpen}
                 onToggle={setIsSortOpen}
                 currentSort={sortType}
@@ -339,11 +334,11 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
               />
             }
           />
-          
+
           <div className="flex flex-col gap-4">
             <AnimatePresence mode="popLayout">
               {Object.keys(groupedExpenses).length === 0 ? (
-                <EmptyState 
+                <EmptyState
                   description={`${t('no_expense_yet')}\n${t('click_to_start')}`}
                 />
               ) : (
@@ -354,11 +349,10 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                     return yb !== ya ? yb - ya : mb - ma;
                   })
                   .map(([monthKey, monthExpenses]) => {
-                    const expenses = monthExpenses as Expense[];
+                    const items = monthExpenses as Expense[];
                     return (
                       <div key={monthKey} className="flex flex-col gap-2">
-                        {/* Month Header */}
-                        <button 
+                        <button
                           onClick={() => toggleMonth(monthKey)}
                           className="flex items-center justify-between px-2 py-1 outline-none group"
                         >
@@ -366,12 +360,12 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                             <span className="text-[13px] font-black text-black tracking-tight">{getMonthLabel(monthKey, i18n)}</span>
                             <div className="h-[1px] w-4 bg-gray-100" />
                             <span className="text-[10px] font-bold text-gray-400">
-                              {expenses.length} {t('expenses')}
+                              {items.length} {t('expenses')}
                             </span>
                           </div>
-                          <ChevronDown 
-                            size={14} 
-                            className={cn("text-gray-300 transition-transform duration-300", expandedMonths.has(monthKey) && "rotate-180")} 
+                          <ChevronDown
+                            size={14}
+                            className={cn("text-gray-300 transition-transform duration-300", expandedMonths.has(monthKey) && "rotate-180")}
                           />
                         </button>
 
@@ -385,15 +379,17 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
                               className="overflow-hidden"
                             >
                               <div className="flex flex-col gap-2">
-                                {expenses.map((exp) => (
-                                  <SwipeableExpenseItem 
-                                    key={exp.id} 
-                                    exp={exp} 
+                                {items.map((exp) => (
+                                  <SwipeableExpenseItem
+                                    key={exp.id}
+                                    exp={exp}
                                     onDelete={handleDeleteExpense}
                                     onEdit={handleEditExpense}
                                     isPersonal={true}
                                     currency={defaultCurrency}
                                     exchangeRate={exp.originalCurrency ? (exchangeRates[exp.originalCurrency] || 1.0) : 1.0}
+                                    activeSwipeId={activeSwipeId}
+                                    onSwipeChange={setActiveSwipeId}
                                   />
                                 ))}
                               </div>
@@ -409,7 +405,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         </section>
       </div>
 
-      <CreateExpenseModal 
+      <CreateExpenseModal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);

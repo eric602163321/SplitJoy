@@ -1,11 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion, useMotionValue, useTransform, animate } from 'motion/react';
 import { Pencil, Trash2, X, ChevronRight } from 'lucide-react';
 import { Expense } from '../types';
-import { getCategoryById } from '../lib/utils';
-import { AVATARS } from './AvatarGrid';
+import { getCategoryById, cn, isChineseLocale } from '../lib/utils';
 import { useTranslation } from 'react-i18next';
-import { cn } from '../lib/utils';
 
 interface SwipeableExpenseItemProps {
   exp: Expense;
@@ -17,43 +15,66 @@ interface SwipeableExpenseItemProps {
   payerName?: string;
   isPersonal?: boolean;
   exchangeRate?: number;
+  activeSwipeId?: string | null;
+  onSwipeChange?: (id: string | null) => void;
 }
 
-const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({ 
-  exp, 
-  onDelete, 
-  onEdit, 
-  currency = '$', 
+const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
+  exp,
+  onDelete,
+  onEdit,
+  currency = '$',
   showPayer = false,
   payerEmoji,
   payerName,
   isPersonal = false,
-  exchangeRate
+  exchangeRate,
+  activeSwipeId,
+  onSwipeChange
 }) => {
   const { t, i18n } = useTranslation();
   const x = useMotionValue(0);
-  
-  // Right swipe (Delete)
+  const isDraggingRef = useRef(false);
+
   const deleteOpacity = useTransform(x, [0, 60], [0, 1]);
   const deleteScale = useTransform(x, [0, 60], [0.5, 1]);
-  
-  // Left swipe (Edit)
+
   const editOpacity = useTransform(x, [0, -60], [0, 1]);
   const editScale = useTransform(x, [0, -60], [0.5, 1]);
 
+  // Collapse automatically when another item is swiped open
+  useEffect(() => {
+    if (activeSwipeId !== undefined && activeSwipeId !== exp.id && x.get() !== 0) {
+      animate(x, 0, { type: 'spring', bounce: 0, duration: 0.25 });
+    }
+  }, [activeSwipeId, exp.id, x]);
+
   const handleDelete = () => {
+    onSwipeChange?.(null);
     animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
       onDelete(exp.id);
     });
   };
 
   const handleEdit = () => {
+    onSwipeChange?.(null);
     animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
       onEdit(exp);
     });
   };
 
+  const handleCardClick = () => {
+    if (isDraggingRef.current) return;
+    if (Math.abs(x.get()) > 5) {
+      animate(x, 0, { type: 'spring', bounce: 0, duration: 0.25 });
+      onSwipeChange?.(null);
+      return;
+    }
+    onEdit(exp);
+  };
+
   const category = getCategoryById(exp.category);
+  const formattedTotal = exp.totalAmount.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
   return (
     <div className={cn(
@@ -61,13 +82,14 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
       isPersonal ? "ios-card shadow-none border border-gray-100" : "border-b border-gray-50 last:border-none"
     )}>
       {/* Delete Background (Visible when swiping right) */}
-      <motion.div 
+      <motion.div
         style={{ opacity: deleteOpacity }}
         className="absolute inset-y-0 left-0 w-20 bg-red-500 flex items-center justify-center p-4"
       >
-        <motion.button 
+        <motion.button
           style={{ scale: deleteScale }}
           onClick={handleDelete}
+          aria-label={t('delete')}
           className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
         >
           {isPersonal ? <Trash2 size={20} strokeWidth={2.5} /> : <X size={20} strokeWidth={3} />}
@@ -75,13 +97,14 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
       </motion.div>
 
       {/* Edit Background (Left Swipe) */}
-      <motion.div 
+      <motion.div
         style={{ opacity: editOpacity }}
         className="absolute inset-y-0 right-0 w-20 bg-[#4285F4] flex items-center justify-center p-4"
       >
-        <motion.button 
+        <motion.button
           style={{ scale: editScale }}
           onClick={handleEdit}
+          aria-label={t('edit')}
           className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
         >
           <Pencil size={20} strokeWidth={2.5} />
@@ -94,22 +117,32 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
         drag="x"
         dragConstraints={{ left: -80, right: 80 }}
         dragElastic={0.1}
+        onDragStart={() => {
+          isDraggingRef.current = true;
+        }}
         onDragEnd={(_, info) => {
+          setTimeout(() => {
+            isDraggingRef.current = false;
+          }, 50);
           if (info.offset.x > 40 || info.velocity.x > 300) {
             animate(x, 80, { type: 'spring', bounce: 0.3, duration: 0.4 });
+            onSwipeChange?.(exp.id);
           } else if (info.offset.x < -40 || info.velocity.x < -300) {
             animate(x, -80, { type: 'spring', bounce: 0.3, duration: 0.4 });
+            onSwipeChange?.(exp.id);
           } else {
             animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 });
+            if (activeSwipeId === exp.id) onSwipeChange?.(null);
           }
         }}
+        onClick={handleCardClick}
         className={cn(
-          "bg-white relative z-10 transition-colors active:bg-gray-50 flex items-center justify-between",
-          isPersonal ? "py-2.5 px-4" : "ios-grouped-item border-none cursor-grab active:cursor-grabbing"
+          "bg-white relative z-10 transition-colors active:bg-gray-50 flex items-center justify-between cursor-pointer",
+          isPersonal ? "py-2.5 px-4" : "ios-grouped-item border-none"
         )}
       >
         <div className="flex items-center gap-3">
-          <div 
+          <div
             className={cn(
               "rounded-full flex items-center justify-center text-xl shadow-sm",
               isPersonal ? "w-9 h-9" : ""
@@ -128,7 +161,7 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
                 </>
               )}
               <span>
-                {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
+                {new Date(exp.date).toLocaleDateString(isChineseLocale(i18n.language) ? 'zh-TW' : 'en-US')}
               </span>
               {isPersonal && exp.notes && (
                 <>
@@ -147,19 +180,19 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
             )}>
               {exp.originalCurrency ? (
                 exp.originalCurrency === '$' ? (
-                  `$${exp.totalAmount.toLocaleString()}`
+                  `$${formattedTotal}`
                 ) : (
                   <>
-                    <span>{exp.totalAmount.toLocaleString()}</span>
+                    <span>{formattedTotal}</span>
                     <span className="text-[10px] font-bold text-gray-450 select-none">{exp.originalCurrency}</span>
                   </>
                 )
               ) : (
                 currency === '$' ? (
-                  `$${exp.totalAmount.toLocaleString()}`
+                  `$${formattedTotal}`
                 ) : (
                   <>
-                    <span>{exp.totalAmount.toLocaleString()}</span>
+                    <span>{formattedTotal}</span>
                     <span className="text-[10px] font-bold text-gray-450 select-none">{currency}</span>
                   </>
                 )
@@ -171,10 +204,10 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
             <span className="text-[10px] font-bold text-gray-400 mr-5 flex items-baseline gap-0.5 justify-end">
               <span>≈</span>
               {currency === '$' ? (
-                `$${(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}`
+                `$${(exp.totalAmount * exchangeRate).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}`
               ) : (
                 <>
-                  <span>{(exp.totalAmount * exchangeRate).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}</span>
+                  <span>{(exp.totalAmount * exchangeRate).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}</span>
                   <span className="text-[8px] font-bold select-none">{currency}</span>
                 </>
               )}

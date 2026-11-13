@@ -5,26 +5,33 @@
       "description": "A participant in personal or group bookkeeping",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "avatar": { "type": "string" }
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 64 },
+        "avatar": { "type": "string", "maxLength": 32 }
       },
-      "required": ["id", "name"]
+      "required": ["id", "name", "avatar"]
     },
     "Expense": {
       "title": "Expense",
       "description": "An individual expense entry",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "description": { "type": "string" },
-        "amount": { "type": "number" },
-        "date": { "type": "string" },
-        "payerId": { "type": "string" },
-        "category": { "type": "string" },
-        "splitDetails": { "type": "object" }
+        "id": { "type": "string", "maxLength": 128 },
+        "totalAmount": { "type": "number" },
+        "description": { "type": "string", "maxLength": 200 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "date": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "maxLength": 64 },
+        "payerId": { "type": "string", "maxLength": 128 },
+        "splitType": { "type": "string", "enum": ["equal", "custom"] },
+        "splits": { "type": "array" },
+        "originalAmount": { "type": "number" },
+        "originalCurrency": { "type": "string", "maxLength": 16 },
+        "exchangeRate": { "type": "number" },
+        "splitWeights": { "type": "object" },
+        "createdBy": { "type": "string", "maxLength": 128 }
       },
-      "required": ["id", "description", "amount", "date", "payerId"]
+      "required": ["id", "totalAmount", "description", "date", "category", "payerId", "splitType", "splits"]
     },
     "User": {
       "title": "User Data",
@@ -40,24 +47,30 @@
       "description": "A group for shared expenses",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "currency": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "members": { "type": "array" },
         "memberIds": { "type": "array" },
-        "ownerId": { "type": "string" },
+        "ownerId": { "type": "string", "maxLength": 128 },
         "expenses": { "type": "array" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["id", "name", "ownerId", "memberIds"]
+      "required": ["id", "name", "currency", "ownerId", "memberIds", "members", "createdAt"]
     }
   },
   "firestore": {
     "users/{userId}": {
       "schema": "User",
-      "description": "User's individual data"
+      "description": "User's individual personal expenses and saved member presets"
     },
     "groups/{groupId}": {
       "schema": "Group",
-      "description": "Shared group data"
+      "description": "Shared group metadata and membership"
+    },
+    "groups/{groupId}/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Individual expense documents belonging to a shared group"
     }
   }
 }

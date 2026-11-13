@@ -3,7 +3,7 @@ import { ChevronDown, ArrowLeft } from 'lucide-react';
 import { motion, useDragControls } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Group } from '../types';
-import { cn } from '../lib/utils';
+import { cn, generateGroupId } from '../lib/utils';
 import { CURRENCIES } from '../constants';
 import CurrencyPickerModal from './CurrencyPickerModal';
 import { useData } from '../contexts/DataContext';
@@ -36,7 +36,7 @@ export default function CreateGroupForm({ onAddGroup, onCancel }: CreateGroupFor
     if (!name.trim()) return;
     const finalCurrency = customCurrency.trim() || currency;
     const newGroup: Group = {
-      id: Date.now().toString(),
+      id: generateGroupId(12),
       name: name.trim(),
       currency: finalCurrency,
       members: [],

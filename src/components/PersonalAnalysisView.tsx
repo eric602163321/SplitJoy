@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import { Sparkles, TrendingUp, ChevronDown } from 'lucide-react';
 import { Expense } from '../types';
 import { RETRO_COLORS } from '../constants';
-import { cn, getMonthLabel, isExpenseInCategory } from '../lib/utils';
+import { cn, getMonthLabel, isExpenseInCategory, isChineseLocale } from '../lib/utils';
 import { useTranslation } from 'react-i18next';
 
 interface PersonalAnalysisViewProps {
@@ -44,6 +44,8 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
   const [hasWidth, setHasWidth] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
+  const isZh = isChineseLocale(i18n.language);
+
   useEffect(() => {
     let active = true;
     const checkSize = () => {
@@ -58,7 +60,7 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
         setTimeout(checkSize, 100);
       }
     };
-    
+
     const fallbackTimer = setTimeout(() => {
       if (active) {
         setIsReady(true);
@@ -76,6 +78,9 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
     };
   }, []);
 
+  const formatAmount = (val: number) =>
+    val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
   return (
     <div className="flex flex-col gap-6">
       {/* Category Pie Chart */}
@@ -85,7 +90,7 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
             <Sparkles size={16} className="text-amber-400" />
             {t('category_ratio')}
           </h3>
-          
+
           <div className="bg-gray-100 p-1 rounded-lg flex gap-1">
             <button
               onClick={() => setStatsTimeRange('current')}
@@ -106,7 +111,7 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                 statsTimeRange === 'custom' ? "bg-white text-[var(--color-ios-blue)] shadow-sm" : "text-gray-400"
               )}
             >
-              {statsTimeRange === 'custom' ? getMonthLabel(statsSelectedMonth, i18n) : (i18n.language === 'zh' ? '選擇月份' : 'Month')}
+              {statsTimeRange === 'custom' ? getMonthLabel(statsSelectedMonth, i18n) : t('select_month')}
               <ChevronDown size={10} className={cn("transition-transform", isMonthPickerOpen && "rotate-180")} />
             </button>
             <button
@@ -121,7 +126,6 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
           </div>
         </div>
 
-        {/* Month Picker Dropdown */}
         <AnimatePresence>
           {isMonthPickerOpen && statsTimeRange === 'custom' && (
             <motion.div
@@ -156,7 +160,7 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         <div className="w-full relative min-h-[160px]" ref={containerRef1}>
           {categoryData.length > 0 && isReady && hasWidth ? (
             <ResponsiveContainer width="100%" height={160} minWidth={0}>
@@ -175,14 +179,15 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: 'none', 
+                <Tooltip
+                  formatter={(value: any) => [formatAmount(Number(value)), currency]}
+                  contentStyle={{
+                    borderRadius: '12px',
+                    border: 'none',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                     fontSize: '11px',
                     fontWeight: 'bold'
-                  }} 
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -197,7 +202,7 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
         <div className="flex flex-col gap-2">
           {categoryData.map((d) => (
             <div key={d.id} className="flex flex-col gap-2">
-              <button 
+              <button
                 onClick={() => setExpandedCategoryId(expandedCategoryId === d.id ? null : d.id)}
                 className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors"
               >
@@ -208,23 +213,23 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-black text-black flex items-baseline gap-0.5">
                     {currency === '$' ? (
-                      `$${d.value.toLocaleString()}`
+                      `$${formatAmount(d.value)}`
                     ) : (
                       <>
-                        <span>{d.value.toLocaleString()}</span>
+                        <span>{formatAmount(d.value)}</span>
                         <span className="text-[10px] font-bold text-gray-500 select-none">{currency}</span>
                       </>
                     )}
                   </span>
-                  <ChevronDown 
-                    size={16} 
-                    className={cn("text-gray-300 transition-transform duration-300", expandedCategoryId === d.id && "rotate-180")} 
+                  <ChevronDown
+                    size={16}
+                    className={cn("text-gray-300 transition-transform duration-300", expandedCategoryId === d.id && "rotate-180")}
                   />
                 </div>
               </button>
               <AnimatePresence>
                 {expandedCategoryId === d.id && (
-                  <motion.div 
+                  <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -237,18 +242,18 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                           <div className="flex flex-col gap-0.5">
                             <span className="font-bold text-gray-800">{exp.description}</span>
                             <span className="text-[10px] text-gray-400">
-                              {new Date(exp.date).toLocaleDateString(i18n.language === 'zh' ? 'zh-TW' : 'en-US')}
+                              {new Date(exp.date).toLocaleDateString(isZh ? 'zh-TW' : 'en-US')}
                             </span>
                           </div>
-                           <span className="font-bold text-gray-600 text-right flex flex-col items-end">
+                          <span className="font-bold text-gray-600 text-right flex flex-col items-end">
                             {exp.originalCurrency && exp.originalCurrency !== currency && exp.originalAmount !== undefined ? (
                               <div className="flex flex-col items-end">
                                 <span className="flex items-baseline gap-0.5">
                                   {currency === '$' ? (
-                                    `$${exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}`
+                                    `$${exp.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}`
                                   ) : (
                                     <>
-                                      <span>{exp.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}</span>
+                                      <span>{exp.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}</span>
                                       <span className="text-[9px] font-bold text-gray-400 select-none">{currency}</span>
                                     </>
                                   )}
@@ -268,10 +273,10 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
                               </div>
                             ) : (
                               currency === '$' ? (
-                                `$${exp.totalAmount.toLocaleString()}`
+                                `$${formatAmount(exp.totalAmount)}`
                               ) : (
                                 <span className="flex items-baseline gap-0.5">
-                                  <span>{exp.totalAmount.toLocaleString()}</span>
+                                  <span>{formatAmount(exp.totalAmount)}</span>
                                   <span className="text-[9px] font-bold text-gray-400 select-none">{currency}</span>
                                 </span>
                               )
@@ -297,33 +302,38 @@ const PersonalAnalysisView: React.FC<PersonalAnalysisViewProps> = ({
           {monthlyTrendData.length > 0 && isReady && hasWidth ? (
             <ResponsiveContainer width="100%" height={160} minWidth={0}>
               <BarChart data={monthlyTrendData}>
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fontSize: 9, fontWeight: 'bold', fill: '#94a3b8' }}
-                  tickFormatter={(val) => val.split('/')[1] + '月'}
+                  tickFormatter={(val) => {
+                    const monthNum = Number(String(val).split('/')[1]);
+                    if (isZh) return `${monthNum}月`;
+                    return new Date(2024, monthNum - 1).toLocaleDateString('en-US', { month: 'short' });
+                  }}
                 />
                 <YAxis hide />
-                <Tooltip 
+                <Tooltip
+                  formatter={(value: any) => [formatAmount(Number(value)), currency]}
                   cursor={{ fill: '#f8fafc', radius: 4 }}
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: 'none', 
+                  contentStyle={{
+                    borderRadius: '12px',
+                    border: 'none',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                     fontSize: '11px',
                     fontWeight: 'bold'
                   }}
                 />
-                <Bar 
-                  dataKey="amount" 
-                  radius={[4, 4, 4, 4]} 
+                <Bar
+                  dataKey="amount"
+                  radius={[4, 4, 4, 4]}
                   barSize={24}
                 >
-                  {monthlyTrendData.map((entry, idx) => (
-                    <Cell 
-                      key={`cell-${idx}`} 
-                      fill={RETRO_COLORS[idx % RETRO_COLORS.length]} 
+                  {monthlyTrendData.map((_, idx) => (
+                    <Cell
+                      key={`cell-${idx}`}
+                      fill={RETRO_COLORS[idx % RETRO_COLORS.length]}
                       fillOpacity={0.8}
                     />
                   ))}

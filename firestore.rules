@@ -2,6 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- Global Default Deny ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // --- 1. Helper Primitives ---
     function isSignedIn() {
       return request.auth != null;
@@ -10,7 +15,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
     function incoming() {
       return request.resource.data;
@@ -19,82 +24,149 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // --- 2. Validation Blueprints ---
+    // --- 2. Legacy-Safe Accessors & Validation Blueprints ---
     function getOwnerId(data) {
-      return data.get('ownerId', '') != '' 
-        ? data.get('ownerId', '') 
+      return data.get('ownerId', '') != ''
+        ? data.get('ownerId', '')
         : (data.get('members', null) is map && 'ownerId' in data.members ? data.members.ownerId : '');
     }
     function getGroupName(data) {
-      return data.get('name', '') != '' 
-        ? data.get('name', '') 
+      return data.get('name', '') != ''
+        ? data.get('name', '')
         : (data.get('members', null) is map && 'name' in data.members ? data.members.name : '');
     }
     function getMemberIds(data) {
-      return data.get('memberIds', null) is list 
+      return data.get('memberIds', null) is list
         ? data.get('memberIds', [])
         : (getOwnerId(data) != '' ? [getOwnerId(data)] : []);
     }
     function isMemberOrOwner(data) {
       return isSignedIn() && (
-        getOwnerId(data) == request.auth.uid || 
+        getOwnerId(data) == request.auth.uid ||
         getMemberIds(data).hasAny([request.auth.uid])
       );
     }
-    function isValidUserData(data) {
-      return (data.get('personalExpenses', []) is list) &&
-             (data.get('members', []) is list);
+    function isGroupMember(groupId) {
+      return isMemberOrOwner(get(/databases/$(database)/documents/groups/$(groupId)).data);
     }
+
+    function isValidUserData(data) {
+      return data.keys().hasOnly(['personalExpenses', 'members']) &&
+             (!('personalExpenses' in data) || (data.personalExpenses is list && data.personalExpenses.size() <= 2000)) &&
+             (!('members' in data) || (data.members is list && data.members.size() <= 100));
+    }
+
     function isValidGroup(data) {
-      return getGroupName(data) is string &&
-             getOwnerId(data) is string &&
-             (getMemberIds(data) is list);
+      return data.keys().hasAll(['id', 'name', 'ownerId', 'memberIds', 'members', 'currency', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'name', 'ownerId', 'memberIds', 'members', 'currency', 'createdAt', 'expenses']) &&
+             isValidId(data.id) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             isValidId(data.ownerId) &&
+             data.currency is string && data.currency.size() >= 1 && data.currency.size() <= 16 &&
+             data.createdAt is string && data.createdAt.size() >= 1 && data.createdAt.size() <= 64 &&
+             data.memberIds is list && data.memberIds.size() >= 1 && data.memberIds.size() <= 50 &&
+             data.members is list && data.members.size() <= 50 &&
+             (!('expenses' in data) || (data.expenses is list && data.expenses.size() <= 500));
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['id', 'totalAmount', 'description', 'date', 'category', 'payerId', 'splitType', 'splits']) &&
+             data.keys().hasOnly(['id', 'totalAmount', 'description', 'notes', 'date', 'category', 'payerId', 'splitType', 'splits', 'originalAmount', 'originalCurrency', 'exchangeRate', 'splitWeights', 'createdBy']) &&
+             isValidId(data.id) &&
+             (data.totalAmount is int || data.totalAmount is float) && data.totalAmount >= 0 &&
+             data.description is string && data.description.size() <= 200 &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             data.date is string && data.date.size() >= 1 && data.date.size() <= 64 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 64 &&
+             data.payerId is string && data.payerId.size() >= 1 && data.payerId.size() <= 128 &&
+             data.splitType in ['equal', 'custom'] &&
+             data.splits is list && data.splits.size() <= 50 &&
+             (!('originalAmount' in data) || ((data.originalAmount is int || data.originalAmount is float) && data.originalAmount >= 0)) &&
+             (!('originalCurrency' in data) || (data.originalCurrency is string && data.originalCurrency.size() <= 16)) &&
+             (!('exchangeRate' in data) || ((data.exchangeRate is int || data.exchangeRate is float) && data.exchangeRate > 0)) &&
+             (!('splitWeights' in data) || data.splitWeights is map) &&
+             (!('createdBy' in data) || isValidId(data.createdBy));
     }
 
     // --- 3. Collection Rules ---
 
-    // Global deny - but placed correctly to avoid blocking matches
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // User docs (Personal expenses & Members)
+    // User personal data (personalExpenses & members)
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUserData(incoming());
-      allow update: if isOwner(userId) && isValidUserData(incoming());
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserData(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserData(incoming());
+      allow delete: if isOwner(userId) && isValidId(userId);
     }
 
     // Shared Groups
     match /groups/{groupId} {
-      // Allow single document read (get) for any signed-in user who has the invite code
-      allow get: if isSignedIn();
-      // Allow querying/listing only if the user is a member
+      // Single document read by exact high-entropy groupId (expenses are isolated in subcollection)
+      allow get: if isSignedIn() && isValidId(groupId);
+      // List queries strictly enforced to groups where user is owner or member
       allow list: if isSignedIn() && isMemberOrOwner(existing());
-      
-      allow create: if isSignedIn() && 
-                    isValidId(groupId) && 
-                    getOwnerId(incoming()) == request.auth.uid &&
-                    isValidGroup(incoming());
-      
-      allow update: if isSignedIn() && (
-        // Scenario A: Existing member or owner is updating details
-        (isMemberOrOwner(existing()) && 
-         getOwnerId(incoming()) == getOwnerId(existing()) &&
-         isValidGroup(incoming())) ||
-        // Scenario B: A new user is joining using the invite code
+
+      allow create: if isSignedIn() &&
+                    isValidId(groupId) &&
+                    isValidGroup(incoming()) &&
+                    incoming().id == groupId &&
+                    incoming().ownerId == request.auth.uid &&
+                    incoming().memberIds.hasAny([request.auth.uid]);
+
+      allow update: if isSignedIn() && isValidId(groupId) && isValidGroup(incoming()) && (
+        // Action A: Existing member or owner updating group metadata/members (immutable id, ownerId, createdAt)
         (
-          // They must add themselves to memberIds
-          incoming().get('memberIds', []).hasAny([request.auth.uid]) &&
-          // Owner, group name and expenses must remain unchanged (fully backward-compatible)
-          getOwnerId(incoming()) == getOwnerId(existing()) &&
-          getGroupName(incoming()) == getGroupName(existing()) &&
-          incoming().get('expenses', []) == existing().get('expenses', []) &&
-          isValidGroup(incoming())
+          isMemberOrOwner(existing()) &&
+          incoming().id == existing().get('id', groupId) &&
+          incoming().ownerId == getOwnerId(existing()) &&
+          incoming().createdAt == existing().get('createdAt', incoming().createdAt) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['id', 'name', 'ownerId', 'currency', 'createdAt', 'members', 'memberIds', 'expenses'])
+        ) ||
+        // Action B: New user joining via invite code (can only add self to memberIds & members; safely normalizes missing legacy root fields)
+        (
+          !isMemberOrOwner(existing()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['id', 'name', 'ownerId', 'currency', 'createdAt', 'expenses', 'members', 'memberIds']) &&
+          incoming().id == existing().get('id', groupId) &&
+          incoming().ownerId == getOwnerId(existing()) &&
+          (getGroupName(existing()) == '' || incoming().name == getGroupName(existing())) &&
+          (!('currency' in existing()) || incoming().currency == existing().currency) &&
+          (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+          (!('expenses' in existing()) || incoming().expenses == existing().expenses) &&
+          incoming().memberIds.hasAny([request.auth.uid]) &&
+          incoming().memberIds.hasAll(getMemberIds(existing())) &&
+          incoming().memberIds.size() <= getMemberIds(existing()).size() + 1 &&
+          (
+            !(existing().get('members', null) is list) ||
+            (
+              incoming().members.hasAll(existing().members) &&
+              incoming().members.size() >= existing().members.size() &&
+              incoming().members.size() <= existing().members.size() + 1
+            )
+          )
         )
       );
-      
-      allow delete: if isSignedIn() && getOwnerId(existing()) == request.auth.uid;
+
+      allow delete: if isSignedIn() && isValidId(groupId) && getOwnerId(existing()) == request.auth.uid;
+
+      // Group Expenses Subcollection (strictly locked to verified group members/owner)
+      match /expenses/{expenseId} {
+        allow read: if isSignedIn() && isValidId(groupId) && isGroupMember(groupId);
+        allow create: if isSignedIn() &&
+                      isValidId(groupId) &&
+                      isValidId(expenseId) &&
+                      isGroupMember(groupId) &&
+                      isValidExpense(incoming()) &&
+                      incoming().id == expenseId;
+        allow update: if isSignedIn() &&
+                      isValidId(groupId) &&
+                      isValidId(expenseId) &&
+                      isGroupMember(groupId) &&
+                      isValidExpense(incoming()) &&
+                      incoming().id == existing().id;
+        allow delete: if isSignedIn() &&
+                      isValidId(groupId) &&
+                      isValidId(expenseId) &&
+                      isGroupMember(groupId);
+      }
     }
   }
 }

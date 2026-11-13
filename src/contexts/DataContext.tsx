@@ -7,8 +7,20 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { syncUserGroups, createGroup, updateGroupDetails, syncUserData, updateUserData, deleteGroup, joinGroup } from '../lib/firebaseUtils';
+import {
+  syncUserGroups,
+  createGroup,
+  updateGroupDetails,
+  syncUserData,
+  updateUserData,
+  deleteGroup,
+  joinGroup,
+  upsertGroupExpense,
+  deleteGroupExpense
+} from '../lib/firebaseUtils';
+import { safeParseJSON, isChineseLocale } from '../lib/utils';
 import { Group, Member, Expense } from '../types';
+import i18n from '../i18n';
 
 interface DataContextType {
   user: User | null;
@@ -22,7 +34,7 @@ interface DataContextType {
   fontSize: 'small' | 'medium' | 'large';
   language: string;
   defaultCurrency: string;
-  
+
   // Actions
   handleLogin: () => Promise<void>;
   handleLogout: () => Promise<void>;
@@ -37,6 +49,8 @@ interface DataContextType {
   addGroup: (group: Group) => Promise<void>;
   updateGroup: (group: Group) => Promise<void>;
   removeGroup: (id: string) => Promise<void>;
+  saveGroupExpense: (groupId: string, expense: Expense) => Promise<void>;
+  removeGroupExpense: (groupId: string, expenseId: string) => Promise<void>;
   joinSharedGroup: (groupId: string) => Promise<Group>;
 }
 
@@ -51,25 +65,27 @@ const STORAGE_KEYS = {
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [groups, setGroups] = useState<Group[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.GROUPS);
-    return saved ? JSON.parse(saved) : [];
+    const parsed = safeParseJSON<Group[]>(localStorage.getItem(STORAGE_KEYS.GROUPS), []);
+    return Array.isArray(parsed) ? parsed : [];
   });
   const [personalExpenses, setPersonalExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PERSONAL_EXPENSES);
-    return saved ? JSON.parse(saved) : [];
+    const parsed = safeParseJSON<Expense[]>(localStorage.getItem(STORAGE_KEYS.PERSONAL_EXPENSES), []);
+    return Array.isArray(parsed) ? parsed : [];
   });
   const [members, setMembers] = useState<Member[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    return saved ? JSON.parse(saved) : [];
+    const parsed = safeParseJSON<Member[]>(localStorage.getItem(STORAGE_KEYS.MEMBERS), []);
+    return Array.isArray(parsed) ? parsed : [];
   });
   const [bgTexture, setBgTextureState] = useState(() => {
     return localStorage.getItem('splitit_bg_texture') || 'default';
   });
   const [fontSize, setFontSizeState] = useState<'small' | 'medium' | 'large'>(() => {
-    return (localStorage.getItem('splitit_font_size') as 'small' | 'medium' | 'large') || 'small';
+    const saved = localStorage.getItem('splitit_font_size');
+    return saved === 'small' || saved === 'medium' || saved === 'large' ? saved : 'small';
   });
   const [language, setLanguageState] = useState(() => {
-    return localStorage.getItem('i18nextLng') || 'zh';
+    const detected = i18n.language || localStorage.getItem('i18nextLng') || 'zh';
+    return isChineseLocale(detected) ? 'zh' : 'en';
   });
   const [defaultCurrency, setDefaultCurrencyState] = useState(() => {
     return localStorage.getItem('splitit_default_currency') || 'TWD';
@@ -87,6 +103,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentPersonalExpenses = useRef(personalExpenses);
   const currentMembers = useRef(members);
   const currentGroups = useRef(groups);
+  const pendingPersonalSyncRef = useRef<(() => void) | null>(null);
+  const recentlyJoinedGroupsRef = useRef<Map<string, Group>>(new Map());
 
   // Tracking the last state we received from or successfully pushed to the cloud
   const lastReceivedPersonalExpenses = useRef<string>('');
@@ -99,16 +117,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Auth Observer & Redirect Result
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
-    
+
     const initAuth = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result?.user) {
-          console.log("[Auth] Signed in via redirect:", result.user);
           setUser(result.user);
         }
       } catch (error: any) {
-        console.error("[Auth] Redirect result error:", error);
+        console.error('[Auth] Redirect result error:', error);
         if (error.code === 'auth/unauthorized-domain') {
           setAuthError(
             `登入失敗：未授權的網域 (auth/unauthorized-domain)。\n\n` +
@@ -136,6 +153,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isFirstPersonalLoad.current = true;
           lastReceivedPersonalExpenses.current = '';
           lastReceivedMembers.current = '';
+          pendingPersonalSyncRef.current = null;
+          recentlyJoinedGroupsRef.current.clear();
         });
       }
     };
@@ -150,101 +169,153 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sync Groups
   useEffect(() => {
     if (!user) return;
-    const unsubscribe = syncUserGroups(user.uid, (syncedGroups) => {
-      console.log(`[Cloud -> Local] Groups synced: ${syncedGroups.length}`);
-      if (isFirstGroupsLoad.current) {
-        isFirstGroupsLoad.current = false;
-        if (syncedGroups.length > 0) {
-          setGroups(syncedGroups);
-        } else if (currentGroups.current.length > 0) {
-          console.log("Migrating local groups to cloud...");
-          currentGroups.current.forEach(async (g) => {
-            try { await createGroup(g, user.uid); } catch (e) { console.error(e); }
-          });
+    const uid = user.uid;
+    const unsubscribe = syncUserGroups(
+      uid,
+      (syncedGroups) => {
+        // Reconcile any newly joined group that hasn't propagated to the query snapshot yet
+        const syncedIds = new Set(syncedGroups.map(g => g.id));
+        recentlyJoinedGroupsRef.current.forEach((_, joinedId) => {
+          if (syncedIds.has(joinedId)) {
+            recentlyJoinedGroupsRef.current.delete(joinedId);
+          }
+        });
+        const pendingJoined = Array.from(recentlyJoinedGroupsRef.current.values());
+        const mergedGroups = pendingJoined.length > 0
+          ? [...pendingJoined, ...syncedGroups]
+          : syncedGroups;
+
+        if (isFirstGroupsLoad.current) {
+          isFirstGroupsLoad.current = false;
+          if (mergedGroups.length > 0) {
+            setGroups(mergedGroups);
+          } else if (currentGroups.current.length > 0) {
+            // Only upload local-only groups owned by this user (never hijack another owner's group)
+            const localOwnedGroups = currentGroups.current.filter(g => !g.ownerId || g.ownerId === uid);
+            if (localOwnedGroups.length > 0) {
+              Promise.all(
+                localOwnedGroups.map(g => createGroup(g, uid).catch(e => console.error(e)))
+              );
+            }
+          }
+        } else {
+          setGroups(mergedGroups);
         }
-      } else {
-        setGroups(syncedGroups);
+        setHasLoadedGroupsFromCloud(true);
+      },
+      (err) => {
+        console.error('[Cloud Sync] Groups listener error:', err);
       }
-      setHasLoadedGroupsFromCloud(true);
-    });
+    );
     return () => unsubscribe();
   }, [user?.uid]);
 
   // Sync Personal Data
   useEffect(() => {
     if (!user) return;
-    const unsubscribe = syncUserData(user.uid, (data) => {
-      console.log(`[Cloud -> Local] Personal synced`);
-      
-      // Update our sync tracker immediately with what we got from cloud
-      const cloudExpensesStr = JSON.stringify(data.expenses);
-      const cloudMembersStr = JSON.stringify(data.members);
-      lastReceivedPersonalExpenses.current = cloudExpensesStr;
-      lastReceivedMembers.current = cloudMembersStr;
+    const uid = user.uid;
+    const unsubscribe = syncUserData(
+      uid,
+      (data) => {
+        const cloudExpensesStr = JSON.stringify(data.expenses);
+        const cloudMembersStr = JSON.stringify(data.members);
+        lastReceivedPersonalExpenses.current = cloudExpensesStr;
+        lastReceivedMembers.current = cloudMembersStr;
 
-      if (isFirstPersonalLoad.current) {
-        isFirstPersonalLoad.current = false;
-        if (data.expenses.length > 0 || data.members.length > 0) {
+        if (isFirstPersonalLoad.current) {
+          isFirstPersonalLoad.current = false;
+          if (data.expenses.length > 0 || data.members.length > 0) {
+            setPersonalExpenses(data.expenses);
+            setMembers(data.members);
+          } else {
+            const pExp = currentPersonalExpenses.current;
+            const mems = currentMembers.current;
+            const localExpensesStr = JSON.stringify(pExp);
+            const localMembersStr = JSON.stringify(mems);
+            if (pExp.length > 0 || mems.length > 0) {
+              lastReceivedPersonalExpenses.current = localExpensesStr;
+              lastReceivedMembers.current = localMembersStr;
+              updateUserData(uid, { personalExpenses: pExp, members: mems }).catch(console.error);
+            }
+          }
+        } else {
           setPersonalExpenses(data.expenses);
           setMembers(data.members);
-        } else {
-          const pExp = currentPersonalExpenses.current;
-          const mems = currentMembers.current;
-          const localExpensesStr = JSON.stringify(pExp);
-          const localMembersStr = JSON.stringify(mems);
-          if (pExp.length > 0 || mems.length > 0) {
-            console.log("Migrating local personal data to cloud...");
-            lastReceivedPersonalExpenses.current = localExpensesStr;
-            lastReceivedMembers.current = localMembersStr;
-            updateUserData(user.uid, { personalExpenses: pExp, members: mems });
-          }
         }
-      } else {
-        setPersonalExpenses(data.expenses);
-        setMembers(data.members);
+        setHasLoadedPersonalFromCloud(true);
+      },
+      (err) => {
+        console.error('[Cloud Sync] Personal listener error:', err);
       }
-      setHasLoadedPersonalFromCloud(true);
-    });
+    );
     return () => unsubscribe();
   }, [user?.uid]);
 
   // Local Storage & Debounced Cloud Sync (Upstream)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+    try {
+      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+    } catch (e) {
+      console.error('[Storage] Failed saving groups:', e);
+    }
   }, [groups]);
 
   useEffect(() => {
     const currentExpStr = JSON.stringify(personalExpenses);
     const currentMemsStr = JSON.stringify(members);
 
-    // Immediate persistence to LocalStorage
-    localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, currentExpStr);
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, currentMemsStr);
+    try {
+      localStorage.setItem(STORAGE_KEYS.PERSONAL_EXPENSES, currentExpStr);
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, currentMemsStr);
+    } catch (e) {
+      console.error('[Storage] Failed saving personal data:', e);
+    }
 
-    // Debounced sync to Firebase (Wait 2.5s of inactivity)
     if (user && hasLoadedPersonalFromCloud && !isLoggingOut.current) {
-      // Check if local string matches cloud tracker. If so, SKIP upload!
       if (currentExpStr === lastReceivedPersonalExpenses.current && currentMemsStr === lastReceivedMembers.current) {
+        pendingPersonalSyncRef.current = null;
         return;
       }
 
-      // Avoid syncing empty local state immediately after auth if first load isn't done
       if (personalExpenses.length > 0 || members.length > 0 || !isFirstPersonalLoad.current) {
-        const timer = setTimeout(() => {
-          console.log(`[Cloud Sync] Debounced update for ${user.uid}`);
+        const uid = user.uid;
+        const flushSync = () => {
           lastReceivedPersonalExpenses.current = currentExpStr;
           lastReceivedMembers.current = currentMemsStr;
-          updateUserData(user.uid, { personalExpenses, members }).catch(console.error);
-        }, 2500);
+          pendingPersonalSyncRef.current = null;
+          updateUserData(uid, { personalExpenses, members }).catch(console.error);
+        };
+
+        pendingPersonalSyncRef.current = flushSync;
+        const timer = setTimeout(flushSync, 800);
         return () => clearTimeout(timer);
       }
     }
   }, [personalExpenses, members, user, hasLoadedPersonalFromCloud]);
 
+  // Flush pending personal sync if user hides or leaves the page before debounce expires
+  useEffect(() => {
+    const handleFlush = () => {
+      if (pendingPersonalSyncRef.current) {
+        pendingPersonalSyncRef.current();
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleFlush();
+      }
+    };
+    window.addEventListener('pagehide', handleFlush);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', handleFlush);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const updateTheme = React.useCallback((textureValue: string, sizeValue: 'small' | 'medium' | 'large') => {
     const root = document.documentElement;
-    
-    // Background Texture
+
     switch (textureValue) {
       case 'soft-blue':
         root.style.setProperty('--color-ios-bg', '#F5F9FF');
@@ -258,15 +329,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'warm':
         root.style.setProperty('--color-ios-bg', '#FFF9F5');
         break;
-      case 'dark-glass':
-        root.style.setProperty('--color-ios-bg', '#121212');
-        root.style.setProperty('--text-color', '#FFFFFF');
-        break;
       default:
         root.style.setProperty('--color-ios-bg', '#F2F2F7');
     }
 
-    // Font Size
     switch (sizeValue) {
       case 'medium':
         root.style.setProperty('--app-font-scale', '1.1');
@@ -274,7 +340,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'large':
         root.style.setProperty('--app-font-scale', '1.25');
         break;
-      default: // small
+      default:
         root.style.setProperty('--app-font-scale', '1.0');
     }
   }, []);
@@ -292,10 +358,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [updateTheme, bgTexture]);
 
   const setLanguage = React.useCallback((lang: string) => {
-    import('../i18n').then(i18n => {
-      i18n.default.changeLanguage(lang);
-      setLanguageState(lang);
-    });
+    const normalized = isChineseLocale(lang) ? 'zh' : 'en';
+    i18n.changeLanguage(normalized);
+    setLanguageState(normalized);
   }, []);
 
   const setDefaultCurrency = React.useCallback((cur: string) => {
@@ -310,17 +375,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogin = React.useCallback(async () => {
     setAuthError(null);
     try {
-      // Always try popup login first, as it is highly reliable and avoids cross-site cookie restrictions
       await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (error: any) {
-      console.error("Popup login failed:", error);
-      
+      console.error('Popup login failed:', error);
+
       if (error.code === 'auth/popup-blocked') {
         try {
-          console.log("Popup blocked. Trying signInWithRedirect as fallback...");
           await signInWithRedirect(auth, new GoogleAuthProvider());
         } catch (redirectError: any) {
-          console.error("Redirect fallback failed:", redirectError);
+          console.error('Redirect fallback failed:', redirectError);
           if (redirectError.code === 'auth/unauthorized-domain') {
             setAuthError(
               `登入失敗：未授權的網域 (auth/unauthorized-domain)。\n\n` +
@@ -363,6 +426,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleLogout = React.useCallback(async () => {
     isLoggingOut.current = true;
+    pendingPersonalSyncRef.current = null;
     try {
       await signOut(auth);
       setGroups([]);
@@ -372,7 +436,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem(STORAGE_KEYS.PERSONAL_EXPENSES);
       localStorage.removeItem(STORAGE_KEYS.MEMBERS);
     } finally {
-      setTimeout(() => { isLoggingOut.current = false; }, 1500);
+      isLoggingOut.current = false;
     }
   }, []);
 
@@ -384,27 +448,75 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeMember = React.useCallback((id: string) => setMembers(prev => prev.filter(m => m.id !== id)), []);
 
   const addGroup = React.useCallback(async (newGroup: Group) => {
-    setGroups(prev => [newGroup, ...prev]);
+    const groupWithOwner = user ? { ...newGroup, ownerId: user.uid, memberIds: [user.uid] } : newGroup;
+    setGroups(prev => [groupWithOwner, ...prev]);
     if (user) {
-      try { await createGroup(newGroup, user.uid); }
-      catch (e) { 
-        setGroups(prev => prev.filter(g => g.id !== newGroup.id)); 
+      try {
+        await createGroup(groupWithOwner, user.uid);
+      } catch (e) {
+        setGroups(prev => prev.filter(g => g.id !== newGroup.id));
         throw e;
       }
     }
   }, [user]);
 
   const updateGroup = React.useCallback(async (updatedGroup: Group) => {
+    const previousGroups = currentGroups.current;
+    setGroups(prev => prev.map(g => (g.id === updatedGroup.id ? updatedGroup : g)));
     if (user) {
-      await updateGroupDetails(updatedGroup.id, updatedGroup);
-    } else {
-      setGroups(prev => prev.map(g => (g.id === updatedGroup.id ? updatedGroup : g)));
+      try {
+        await updateGroupDetails(updatedGroup.id, updatedGroup);
+      } catch (e) {
+        setGroups(previousGroups);
+        throw e;
+      }
     }
   }, [user]);
 
   const removeGroup = React.useCallback(async (id: string) => {
+    const previousGroups = currentGroups.current;
     setGroups(prev => prev.filter(g => g.id !== id));
-    if (user) await deleteGroup(id);
+    if (user) {
+      try {
+        await deleteGroup(id);
+      } catch (e) {
+        setGroups(previousGroups);
+        throw e;
+      }
+    }
+  }, [user]);
+
+  const saveGroupExpense = React.useCallback(async (groupId: string, expense: Expense) => {
+    if (user) {
+      await upsertGroupExpense(groupId, expense);
+    } else {
+      setGroups(prev =>
+        prev.map(g => {
+          if (g.id !== groupId) return g;
+          const exists = g.expenses.some(e => e.id === expense.id);
+          return {
+            ...g,
+            expenses: exists
+              ? g.expenses.map(e => (e.id === expense.id ? expense : e))
+              : [...g.expenses, expense]
+          };
+        })
+      );
+    }
+  }, [user]);
+
+  const removeGroupExpense = React.useCallback(async (groupId: string, expenseId: string) => {
+    if (user) {
+      await deleteGroupExpense(groupId, expenseId);
+    } else {
+      setGroups(prev =>
+        prev.map(g =>
+          g.id === groupId
+            ? { ...g, expenses: g.expenses.filter(e => e.id !== expenseId) }
+            : g
+        )
+      );
+    }
   }, [user]);
 
   const joinSharedGroup = React.useCallback(async (groupId: string) => {
@@ -415,9 +527,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       photoURL: user.photoURL
     });
     if (updatedGroup) {
+      recentlyJoinedGroupsRef.current.set(updatedGroup.id, updatedGroup);
       setGroups(prev => {
         if (prev.some(g => g.id === updatedGroup.id)) {
-          return prev.map(g => g.id === updatedGroup.id ? updatedGroup : g);
+          return prev.map(g => (g.id === updatedGroup.id ? updatedGroup : g));
         }
         return [updatedGroup, ...prev];
       });
@@ -427,36 +540,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const contextValue = React.useMemo(() => ({
-    user, 
-    groups, 
-    personalExpenses, 
-    members, 
+    user,
+    groups,
+    personalExpenses,
+    members,
     isAuthLoading,
     isInitialSyncComplete: hasLoadedPersonalFromCloud && hasLoadedGroupsFromCloud,
-    authError, 
-    handleLogin, 
-    handleLogout, 
-    addPersonalExpense, 
+    authError,
+    handleLogin,
+    handleLogout,
+    addPersonalExpense,
     setPersonalExpenses,
-    addMember, 
-    removeMember, 
-    addGroup, 
-    updateGroup, 
+    addMember,
+    removeMember,
+    addGroup,
+    updateGroup,
     removeGroup,
+    saveGroupExpense,
+    removeGroupExpense,
     joinSharedGroup,
-    bgTexture, 
-    setBgTexture, 
-    fontSize, 
-    setFontSize, 
-    language, 
+    bgTexture,
+    setBgTexture,
+    fontSize,
+    setFontSize,
+    language,
     setLanguage,
     defaultCurrency,
     setDefaultCurrency
   }), [
-    user, groups, personalExpenses, members, isAuthLoading, 
+    user, groups, personalExpenses, members, isAuthLoading,
     hasLoadedPersonalFromCloud, hasLoadedGroupsFromCloud, authError,
-    handleLogin, handleLogout, addPersonalExpense, addMember, 
-    removeMember, addGroup, updateGroup, removeGroup, joinSharedGroup,
+    handleLogin, handleLogout, addPersonalExpense, addMember,
+    removeMember, addGroup, updateGroup, removeGroup, saveGroupExpense,
+    removeGroupExpense, joinSharedGroup,
     bgTexture, setBgTexture, fontSize, setFontSize, language, setLanguage,
     defaultCurrency, setDefaultCurrency
   ]);

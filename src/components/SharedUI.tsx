@@ -2,7 +2,6 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, Sparkles, LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { useTranslation } from 'react-i18next';
 
 /**
  * 屏幕標題組件
