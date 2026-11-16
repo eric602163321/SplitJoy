@@ -11,7 +11,8 @@ import StatsScreen from './StatsScreen';
 import SwipeableExpenseItem from './SwipeableExpenseItem';
 import { ScreenHeader, SectionTitle, EmptyState } from './SharedUI';
 import { cn } from '../lib/utils';
-import { syncGroupExpenses, migrateLegacyExpensesIfNeeded } from '../lib/firebaseUtils';
+import { syncGroupExpenses, migrateLegacyExpensesIfNeeded, ensureGroupSyncedOnCloud } from '../lib/firebaseUtils';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface GroupDetailScreenProps {
   group: Group;
@@ -37,6 +38,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
   const [copiedLink, setCopiedLink] = useState(false);
   const [isInviteExpanded, setIsInviteExpanded] = useState(false);
   const [cloudExpenses, setCloudExpenses] = useState<Expense[] | null>(null);
+  const [expensesRetryKey, setExpensesRetryKey] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const dragControls = useDragControls();
 
@@ -53,18 +55,45 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       });
     }
 
+    let cancelled = false;
     const unsubscribe = syncGroupExpenses(
       group.id,
       (items) => {
-        setCloudExpenses(items);
+        if (!cancelled) setCloudExpenses(items);
       },
-      (err) => {
+      async (err) => {
         console.error('Group expenses listener error:', err);
+        if (cancelled) return;
+        const msg = err?.message || '';
+        if (msg.includes('Missing or insufficient permissions') || msg.includes('permission-denied')) {
+          try {
+            const status = await ensureGroupSyncedOnCloud(group, user.uid);
+            if (!cancelled && (status === 'created' || status === 'repaired')) {
+              setExpensesRetryKey(k => k + 1);
+              return;
+            }
+            if (!cancelled && status === 'exists_authorized') {
+              setActionError(t('err_rules_outdated', { projectId: firebaseConfig.projectId }));
+              return;
+            }
+            if (!cancelled) {
+              setActionError(t('err_permission_denied'));
+            }
+          } catch (syncErr) {
+            console.error('Failed to verify group sync:', syncErr);
+            if (!cancelled) {
+              setActionError(t('err_permission_denied'));
+            }
+          }
+        }
       }
     );
 
-    return () => unsubscribe();
-  }, [user?.uid, group.id]);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [user?.uid, group.id, expensesRetryKey]);
 
   // Combine subcollection expenses with legacy expenses fallback during migration
   const activeExpenses: Expense[] = useMemo(() => {
@@ -121,6 +150,33 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
     }
   };
 
+  const formatCloudError = (err: unknown): string => {
+    const rawMsg = err instanceof Error ? err.message : String(err || '');
+    let detail = rawMsg;
+    try {
+      const parsed = JSON.parse(rawMsg);
+      if (parsed && typeof parsed.error === 'string') {
+        detail = parsed.error;
+      }
+    } catch {
+      // Not JSON, use raw message
+    }
+    const lower = detail.toLowerCase();
+    if (lower.includes('firestore_rules_outdated')) {
+      return t('err_rules_outdated', { projectId: firebaseConfig.projectId });
+    }
+    if (lower.includes('quota exceeded') || lower.includes('resource-exhausted')) {
+      return t('err_quota_exceeded');
+    }
+    if (lower.includes('unauthenticated') || lower.includes('auth')) {
+      return t('err_auth_expired');
+    }
+    if (lower.includes('missing or insufficient permissions') || lower.includes('permission-denied')) {
+      return t('err_permission_denied');
+    }
+    return detail && detail !== rawMsg ? `${t('err_save_failed')} (${detail})` : t('err_save_failed');
+  };
+
   const toggleMemberInGroup = async (member: Member) => {
     setActionError(null);
     const isAlreadyInGroup = group.members.some(m => m.id === member.id);
@@ -142,7 +198,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       });
     } catch (err) {
       console.error('Failed to update group members:', err);
-      setActionError(t('err_save_failed'));
+      setActionError(formatCloudError(err));
     }
   };
 
@@ -154,7 +210,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       setIsModalOpen(false);
     } catch (err) {
       console.error('Failed to save group expense:', err);
-      setActionError(t('err_save_failed'));
+      setActionError(formatCloudError(err));
     }
   };
 
@@ -169,7 +225,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       await removeGroupExpense(group.id, id);
     } catch (err) {
       console.error('Failed to delete group expense:', err);
-      setActionError(t('err_save_failed'));
+      setActionError(formatCloudError(err));
     }
   };
 
@@ -201,7 +257,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
       setIsEditingGroup(false);
     } catch (err) {
       console.error('Failed to update group details:', err);
-      setActionError(t('err_save_failed'));
+      setActionError(formatCloudError(err));
     } finally {
       setIsSavingGroup(false);
     }
@@ -590,6 +646,7 @@ export default function GroupDetailScreen({ group, onUpdateGroup, onBack, allMem
         }}
         members={group.members}
         onSave={handleSaveExpense}
+        onDelete={handleDeleteExpense}
         initialExpense={editingExpense || undefined}
         groupCurrency={group.currency}
       />

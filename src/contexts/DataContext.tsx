@@ -16,7 +16,8 @@ import {
   deleteGroup,
   joinGroup,
   upsertGroupExpense,
-  deleteGroupExpense
+  deleteGroupExpense,
+  ensureGroupSyncedOnCloud
 } from '../lib/firebaseUtils';
 import { safeParseJSON, isChineseLocale } from '../lib/utils';
 import { Group, Member, Expense } from '../types';
@@ -190,12 +191,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mergedGroups.length > 0) {
             setGroups(mergedGroups);
           } else if (currentGroups.current.length > 0) {
-            // Only upload local-only groups owned by this user (never hijack another owner's group)
-            const localOwnedGroups = currentGroups.current.filter(g => !g.ownerId || g.ownerId === uid);
-            if (localOwnedGroups.length > 0) {
+            // Only upload local-only groups (no ownerId yet) and remove any stale unowned/deleted ghosts
+            const localUnownedGroups = currentGroups.current.filter(g => !g.ownerId);
+            if (localUnownedGroups.length > 0) {
+              const normalized = localUnownedGroups.map(g => ({
+                ...g,
+                ownerId: uid,
+                memberIds: Array.from(new Set([uid, ...g.members.map(m => m.id)]))
+              }));
+              setGroups(normalized);
               Promise.all(
-                localOwnedGroups.map(g => createGroup(g, uid).catch(e => console.error(e)))
+                normalized.map(g => createGroup(g, uid).catch(e => console.error('[Cloud Sync] Local group upload failed:', e)))
               );
+            } else {
+              setGroups([]);
             }
           }
         } else {
@@ -488,7 +497,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveGroupExpense = React.useCallback(async (groupId: string, expense: Expense) => {
     if (user) {
-      await upsertGroupExpense(groupId, expense);
+      try {
+        await upsertGroupExpense(groupId, expense);
+      } catch (err: any) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const targetGroup = currentGroups.current.find(g => g.id === groupId);
+        const isPermErr = msg.includes('Missing or insufficient permissions') || msg.includes('permission-denied');
+        if (isPermErr && targetGroup) {
+          const status = await ensureGroupSyncedOnCloud(targetGroup, user.uid);
+          if (status === 'created' || status === 'repaired') {
+            const syncedGroup: Group = {
+              ...targetGroup,
+              ownerId: targetGroup.ownerId || user.uid,
+              memberIds: Array.from(new Set([user.uid, ...targetGroup.members.map(m => m.id)]))
+            };
+            setGroups(prev => prev.map(g => (g.id === groupId ? syncedGroup : g)));
+            await upsertGroupExpense(groupId, expense);
+            return;
+          }
+          if (status === 'exists_authorized') {
+            throw new Error('firestore_rules_outdated');
+          }
+        }
+        throw err;
+      }
     } else {
       setGroups(prev =>
         prev.map(g => {
@@ -508,6 +540,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeGroupExpense = React.useCallback(async (groupId: string, expenseId: string) => {
     if (user) {
       await deleteGroupExpense(groupId, expenseId);
+      setGroups(prev =>
+        prev.map(g =>
+          g.id === groupId && g.expenses.some(e => e.id === expenseId)
+            ? { ...g, expenses: g.expenses.filter(e => e.id !== expenseId) }
+            : g
+        )
+      );
     } else {
       setGroups(prev =>
         prev.map(g =>

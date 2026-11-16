@@ -26,18 +26,18 @@ service cloud.firestore {
 
     // --- 2. Legacy-Safe Accessors & Validation Blueprints ---
     function getOwnerId(data) {
-      return data.get('ownerId', '') != ''
-        ? data.get('ownerId', '')
-        : (data.get('members', null) is map && 'ownerId' in data.members ? data.members.ownerId : '');
+      return ('ownerId' in data && data.ownerId is string && data.ownerId != '')
+        ? data.ownerId
+        : (('members' in data && data.members is map && 'ownerId' in data.members && data.members.ownerId is string) ? data.members.ownerId : '');
     }
     function getGroupName(data) {
-      return data.get('name', '') != ''
-        ? data.get('name', '')
-        : (data.get('members', null) is map && 'name' in data.members ? data.members.name : '');
+      return ('name' in data && data.name is string && data.name != '')
+        ? data.name
+        : (('members' in data && data.members is map && 'name' in data.members && data.members.name is string) ? data.members.name : '');
     }
     function getMemberIds(data) {
-      return data.get('memberIds', null) is list
-        ? data.get('memberIds', [])
+      return ('memberIds' in data && data.memberIds is list)
+        ? data.memberIds
         : (getOwnerId(data) != '' ? [getOwnerId(data)] : []);
     }
     function isMemberOrOwner(data) {
@@ -47,7 +47,12 @@ service cloud.firestore {
       );
     }
     function isGroupMember(groupId) {
-      return isMemberOrOwner(get(/databases/$(database)/documents/groups/$(groupId)).data);
+      return exists(/databases/$(database)/documents/groups/$(groupId)) &&
+             isMemberOrOwner(get(/databases/$(database)/documents/groups/$(groupId)).data);
+    }
+    function isGroupMemberAfter(groupId) {
+      return existsAfter(/databases/$(database)/documents/groups/$(groupId)) &&
+             isMemberOrOwner(getAfter(/databases/$(database)/documents/groups/$(groupId)).data);
     }
 
     function isValidUserData(data) {
@@ -103,7 +108,10 @@ service cloud.firestore {
       // Single document read by exact high-entropy groupId (expenses are isolated in subcollection)
       allow get: if isSignedIn() && isValidId(groupId);
       // List queries strictly enforced to groups where user is owner or member
-      allow list: if isSignedIn() && isMemberOrOwner(existing());
+      allow list: if isSignedIn() && (
+        existing().ownerId == request.auth.uid ||
+        request.auth.uid in existing().memberIds
+      );
 
       allow create: if isSignedIn() &&
                     isValidId(groupId) &&
@@ -116,20 +124,22 @@ service cloud.firestore {
         // Action A: Existing member or owner updating group metadata/members (immutable id, ownerId, createdAt)
         (
           isMemberOrOwner(existing()) &&
-          incoming().id == existing().get('id', groupId) &&
-          incoming().ownerId == getOwnerId(existing()) &&
-          incoming().createdAt == existing().get('createdAt', incoming().createdAt) &&
+          incoming().id == groupId &&
+          (!('id' in existing()) || !(existing().id is string) || existing().id == '' || incoming().id == existing().id) &&
+          (getOwnerId(existing()) == '' ? incoming().ownerId == request.auth.uid : incoming().ownerId == getOwnerId(existing())) &&
+          (!('createdAt' in existing()) || !(existing().createdAt is string) || existing().createdAt == '' || incoming().createdAt == existing().createdAt) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['id', 'name', 'ownerId', 'currency', 'createdAt', 'members', 'memberIds', 'expenses'])
         ) ||
         // Action B: New user joining via invite code (can only add self to memberIds & members; safely normalizes missing legacy root fields)
         (
           !isMemberOrOwner(existing()) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['id', 'name', 'ownerId', 'currency', 'createdAt', 'expenses', 'members', 'memberIds']) &&
-          incoming().id == existing().get('id', groupId) &&
-          incoming().ownerId == getOwnerId(existing()) &&
+          incoming().id == groupId &&
+          (!('id' in existing()) || !(existing().id is string) || existing().id == '' || incoming().id == existing().id) &&
+          (getOwnerId(existing()) != '' && incoming().ownerId == getOwnerId(existing())) &&
           (getGroupName(existing()) == '' || incoming().name == getGroupName(existing())) &&
-          (!('currency' in existing()) || incoming().currency == existing().currency) &&
-          (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+          (!('currency' in existing()) || !(existing().currency is string) || existing().currency == '' || incoming().currency == existing().currency) &&
+          (!('createdAt' in existing()) || !(existing().createdAt is string) || existing().createdAt == '' || incoming().createdAt == existing().createdAt) &&
           (!('expenses' in existing()) || incoming().expenses == existing().expenses) &&
           incoming().memberIds.hasAny([request.auth.uid]) &&
           incoming().memberIds.hasAll(getMemberIds(existing())) &&
@@ -153,7 +163,7 @@ service cloud.firestore {
         allow create: if isSignedIn() &&
                       isValidId(groupId) &&
                       isValidId(expenseId) &&
-                      isGroupMember(groupId) &&
+                      (isGroupMember(groupId) || isGroupMemberAfter(groupId)) &&
                       isValidExpense(incoming()) &&
                       incoming().id == expenseId;
         allow update: if isSignedIn() &&

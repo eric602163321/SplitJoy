@@ -3,6 +3,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   query,
   where,
@@ -149,6 +150,47 @@ export const syncGroupExpenses = (
   );
 };
 
+function sanitizeExpenseForFirestore(exp: Expense, fallbackUid?: string): Record<string, any> {
+  const raw = exp as any;
+  const isValidFirestoreId = (val: unknown): val is string =>
+    typeof val === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(val);
+  const safeId = isValidFirestoreId(exp.id)
+    ? exp.id
+    : `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const totalAmount = typeof exp.totalAmount === 'number' && !isNaN(exp.totalAmount)
+    ? Math.max(0, exp.totalAmount)
+    : Math.max(0, Number(raw.amount) || 0);
+  const splitType = exp.splitType === 'custom' ? 'custom' : 'equal';
+  const validCreatedBy = isValidFirestoreId(exp.createdBy)
+    ? exp.createdBy
+    : (isValidFirestoreId(fallbackUid) ? fallbackUid : undefined);
+  const sanitized: Record<string, any> = {
+    id: safeId,
+    totalAmount,
+    description: typeof exp.description === 'string' ? exp.description.slice(0, 200) : '',
+    date: typeof exp.date === 'string' && exp.date ? exp.date.slice(0, 64) : new Date().toISOString(),
+    category: typeof exp.category === 'string' && exp.category ? exp.category.slice(0, 64) : 'others',
+    payerId: typeof exp.payerId === 'string' && exp.payerId ? exp.payerId.slice(0, 128) : (fallbackUid || 'unknown'),
+    splitType,
+    splits: Array.isArray(exp.splits) ? exp.splits.slice(0, 50) : [],
+    ...(validCreatedBy ? { createdBy: validCreatedBy } : {}),
+  };
+  if (typeof exp.notes === 'string') sanitized.notes = exp.notes.slice(0, 500);
+  if (typeof exp.originalAmount === 'number' && !isNaN(exp.originalAmount) && exp.originalAmount >= 0) {
+    sanitized.originalAmount = exp.originalAmount;
+  }
+  if (typeof exp.originalCurrency === 'string' && exp.originalCurrency) {
+    sanitized.originalCurrency = exp.originalCurrency.slice(0, 16);
+  }
+  if (typeof exp.exchangeRate === 'number' && exp.exchangeRate > 0) {
+    sanitized.exchangeRate = exp.exchangeRate;
+  }
+  if (exp.splitWeights && typeof exp.splitWeights === 'object') {
+    sanitized.splitWeights = exp.splitWeights;
+  }
+  return stripUndefined(sanitized);
+}
+
 // Migrate legacy array-based expenses on groups/{groupId} into subcollection
 export const migrateLegacyExpensesIfNeeded = async (groupId: string, legacyExpenses: Expense[]) => {
   if (!legacyExpenses || legacyExpenses.length === 0) return;
@@ -156,40 +198,9 @@ export const migrateLegacyExpensesIfNeeded = async (groupId: string, legacyExpen
   try {
     const batch = writeBatch(db);
     legacyExpenses.forEach(exp => {
-      const raw = exp as any;
-      const safeId = typeof exp.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(exp.id)
-        ? exp.id
-        : `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const expRef = doc(db, 'groups', groupId, 'expenses', safeId);
-      const totalAmount = typeof exp.totalAmount === 'number' && !isNaN(exp.totalAmount)
-        ? Math.max(0, exp.totalAmount)
-        : Math.max(0, Number(raw.amount) || 0);
-      const splitType = exp.splitType === 'custom' ? 'custom' : 'equal';
-      const sanitized: Record<string, any> = {
-        id: safeId,
-        totalAmount,
-        description: typeof exp.description === 'string' ? exp.description.slice(0, 200) : '',
-        date: typeof exp.date === 'string' && exp.date ? exp.date.slice(0, 64) : new Date().toISOString(),
-        category: typeof exp.category === 'string' && exp.category ? exp.category.slice(0, 64) : 'others',
-        payerId: typeof exp.payerId === 'string' && exp.payerId ? exp.payerId.slice(0, 128) : (auth.currentUser?.uid || 'unknown'),
-        splitType,
-        splits: Array.isArray(exp.splits) ? exp.splits.slice(0, 50) : [],
-        createdBy: exp.createdBy || auth.currentUser?.uid,
-      };
-      if (typeof exp.notes === 'string') sanitized.notes = exp.notes.slice(0, 500);
-      if (typeof exp.originalAmount === 'number' && !isNaN(exp.originalAmount) && exp.originalAmount >= 0) {
-        sanitized.originalAmount = exp.originalAmount;
-      }
-      if (typeof exp.originalCurrency === 'string' && exp.originalCurrency) {
-        sanitized.originalCurrency = exp.originalCurrency.slice(0, 16);
-      }
-      if (typeof exp.exchangeRate === 'number' && exp.exchangeRate > 0) {
-        sanitized.exchangeRate = exp.exchangeRate;
-      }
-      if (exp.splitWeights && typeof exp.splitWeights === 'object') {
-        sanitized.splitWeights = exp.splitWeights;
-      }
-      batch.set(expRef, stripUndefined(sanitized));
+      const payload = sanitizeExpenseForFirestore(exp, auth.currentUser?.uid);
+      const expRef = doc(db, 'groups', groupId, 'expenses', payload.id);
+      batch.set(expRef, payload);
     });
     const groupRef = doc(db, 'groups', groupId);
     batch.update(groupRef, { expenses: [] });
@@ -203,10 +214,7 @@ export const upsertGroupExpense = async (groupId: string, expense: Expense) => {
   const path = `groups/${groupId}/expenses/${expense.id}`;
   try {
     const expRef = doc(db, 'groups', groupId, 'expenses', expense.id);
-    const payload = stripUndefined({
-      ...expense,
-      createdBy: expense.createdBy || auth.currentUser?.uid
-    });
+    const payload = sanitizeExpenseForFirestore(expense, auth.currentUser?.uid);
     await setDoc(expRef, payload);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -228,17 +236,17 @@ export const createGroup = async (group: Group, userId: string) => {
   try {
     const batch = writeBatch(db);
     const groupRef = doc(db, 'groups', group.id);
-    const memberIds = Array.from(new Set([userId, ...group.members.map(m => m.id)]));
+    const memberIds = Array.from(new Set([userId, ...group.members.map(m => m.id)])).slice(0, 50);
 
     batch.set(
       groupRef,
       stripUndefined({
         id: group.id,
-        name: group.name,
-        currency: group.currency || 'TWD',
-        createdAt: group.createdAt || new Date().toISOString(),
+        name: (group.name || 'Unnamed Group').slice(0, 100),
+        currency: (group.currency || 'TWD').slice(0, 16),
+        createdAt: (group.createdAt || new Date().toISOString()).slice(0, 64),
         ownerId: userId,
-        members: group.members,
+        members: group.members.slice(0, 50),
         memberIds,
         expenses: []
       })
@@ -246,14 +254,9 @@ export const createGroup = async (group: Group, userId: string) => {
 
     if (group.expenses && group.expenses.length > 0) {
       group.expenses.forEach(exp => {
-        const expRef = doc(db, 'groups', group.id, 'expenses', exp.id);
-        batch.set(
-          expRef,
-          stripUndefined({
-            ...exp,
-            createdBy: userId
-          })
-        );
+        const payload = sanitizeExpenseForFirestore(exp, userId);
+        const expRef = doc(db, 'groups', group.id, 'expenses', payload.id);
+        batch.set(expRef, payload);
       });
     }
 
@@ -263,13 +266,93 @@ export const createGroup = async (group: Group, userId: string) => {
   }
 };
 
+export const ensureGroupSyncedOnCloud = async (
+  group: Group,
+  userId: string
+): Promise<'created' | 'repaired' | 'exists_authorized' | 'exists_unauthorized'> => {
+  const groupRef = doc(db, 'groups', group.id);
+  let snap;
+  try {
+    snap = await getDocFromServer(groupRef);
+  } catch (err: any) {
+    const code = err?.code || '';
+    const msg = err?.message || '';
+    if (code === 'permission-denied' || msg.includes('Missing or insufficient permissions')) {
+      throw err;
+    }
+    snap = await getDoc(groupRef);
+  }
+
+  if (!snap.exists()) {
+    if (!group.ownerId || group.ownerId === userId) {
+      const normalized: Group = {
+        ...group,
+        ownerId: userId,
+        memberIds: Array.from(new Set([userId, ...group.members.map(m => m.id)])).slice(0, 50)
+      };
+      await createGroup(normalized, userId);
+      return 'created';
+    }
+    return 'exists_unauthorized';
+  }
+
+  const rawData = snap.data() as Record<string, any>;
+  const parsed = parseGroupDoc(group.id, rawData, '');
+  const isAuthorized = parsed.ownerId === userId || (parsed.memberIds || []).includes(userId);
+  if (!isAuthorized) {
+    return 'exists_unauthorized';
+  }
+
+  const needsSchemaRepair =
+    typeof rawData.id !== 'string' ||
+    !rawData.ownerId ||
+    !Array.isArray(rawData.memberIds) ||
+    !Array.isArray(rawData.members) ||
+    !(rawData.memberIds as string[]).includes(userId);
+
+  if (needsSchemaRepair) {
+    const normalizedMemberIds = Array.from(new Set([parsed.ownerId || userId, ...(parsed.memberIds || []), userId])).slice(0, 50);
+    await updateGroupDetails(group.id, {
+      id: group.id,
+      name: parsed.name,
+      ownerId: parsed.ownerId || userId,
+      currency: parsed.currency,
+      createdAt: parsed.createdAt,
+      members: parsed.members,
+      memberIds: normalizedMemberIds
+    });
+    return 'repaired';
+  }
+
+  return 'exists_authorized';
+};
+
 export const updateGroupDetails = async (groupId: string, data: Partial<Group>) => {
   const path = `groups/${groupId}`;
   try {
     const groupRef = doc(db, 'groups', groupId);
     await runTransaction(db, async (transaction) => {
       const docSnap = await transaction.get(groupRef);
-      if (!docSnap.exists()) return;
+      if (!docSnap.exists()) {
+        if (auth.currentUser && (!data.ownerId || data.ownerId === auth.currentUser.uid)) {
+          const memberList = Array.isArray(data.members) ? data.members : [];
+          const memberIds = Array.from(new Set([auth.currentUser.uid, ...memberList.map(m => m.id)])).slice(0, 50);
+          transaction.set(
+            groupRef,
+            stripUndefined({
+              id: groupId,
+              name: (data.name || 'Unnamed Group').slice(0, 100),
+              currency: (data.currency || 'TWD').slice(0, 16),
+              createdAt: (data.createdAt || new Date().toISOString()).slice(0, 64),
+              ownerId: auth.currentUser.uid,
+              members: memberList.slice(0, 50),
+              memberIds,
+              expenses: []
+            })
+          );
+        }
+        return;
+      }
       const currentData = docSnap.data();
 
       const ownerId =
@@ -309,6 +392,10 @@ export const updateGroupDetails = async (groupId: string, data: Partial<Group>) 
           ids.push(effectiveOwnerId);
         }
         updateData.memberIds = Array.from(new Set(ids));
+      } else if (!Array.isArray(currentData.members)) {
+        const parsed = parseGroupDoc(groupId, currentData, ownerId || auth.currentUser?.uid || '');
+        updateData.members = parsed.members;
+        updateData.memberIds = parsed.memberIds;
       }
 
       transaction.update(groupRef, updateData);

@@ -413,6 +413,7 @@ export default function PersonalScreen({ expenses, setExpenses }: PersonalScreen
         }}
         members={[selfMember]}
         onSave={handleSaveExpense}
+        onDelete={handleDeleteExpense}
         initialExpense={editingExpense || undefined}
         groupCurrency={defaultCurrency}
       />

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { motion, useMotionValue, useTransform, animate } from 'motion/react';
-import { Pencil, Trash2, X, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
+import { Pencil, Trash2, ChevronRight } from 'lucide-react';
 import { Expense } from '../types';
 import { getCategoryById, cn, isChineseLocale } from '../lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +34,7 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
   onSwipeChange
 }) => {
   const { t, i18n } = useTranslation();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const x = useMotionValue(0);
   const isDraggingRef = useRef(false);
 
@@ -49,18 +51,18 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
     }
   }, [activeSwipeId, exp.id, x]);
 
-  const handleDelete = () => {
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
     onSwipeChange?.(null);
-    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
-      onDelete(exp.id);
-    });
+    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.25 });
+    setShowDeleteConfirm(true);
   };
 
-  const handleEdit = () => {
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
     onSwipeChange?.(null);
-    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.3 }).then(() => {
-      onEdit(exp);
-    });
+    animate(x, 0, { type: 'spring', bounce: 0, duration: 0.25 });
+    onEdit(exp);
   };
 
   const handleCardClick = () => {
@@ -87,12 +89,13 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
         className="absolute inset-y-0 left-0 w-20 bg-red-500 flex items-center justify-center p-4"
       >
         <motion.button
+          type="button"
           style={{ scale: deleteScale }}
           onClick={handleDelete}
           aria-label={t('delete')}
-          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
+          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform cursor-pointer"
         >
-          {isPersonal ? <Trash2 size={20} strokeWidth={2.5} /> : <X size={20} strokeWidth={3} />}
+          <Trash2 size={20} strokeWidth={2.5} />
         </motion.button>
       </motion.div>
 
@@ -102,10 +105,11 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
         className="absolute inset-y-0 right-0 w-20 bg-[#4285F4] flex items-center justify-center p-4"
       >
         <motion.button
+          type="button"
           style={{ scale: editScale }}
           onClick={handleEdit}
           aria-label={t('edit')}
-          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform"
+          className="w-full h-full flex items-center justify-center text-white active:scale-90 transition-transform cursor-pointer"
         >
           <Pencil size={20} strokeWidth={2.5} />
         </motion.button>
@@ -117,6 +121,9 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
         drag="x"
         dragConstraints={{ left: -80, right: 80 }}
         dragElastic={0.1}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
         onDragStart={() => {
           isDraggingRef.current = true;
         }}
@@ -215,6 +222,59 @@ const SwipeableExpenseItem: React.FC<SwipeableExpenseItemProps> = React.memo(({
           )}
         </div>
       </motion.div>
+
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteConfirm(false);
+                }}
+                className="fixed inset-0 bg-black/40 z-[200] backdrop-blur-[2px]"
+              />
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                onClick={(e) => e.stopPropagation()}
+                className="fixed bottom-0 left-0 right-0 z-[201] p-4 pb-12 flex flex-col gap-3 items-center"
+              >
+                <div className="w-full max-w-sm bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl">
+                  <div className="p-4 text-center border-b border-gray-200">
+                    <p className="text-[13px] text-[#8E8E93] font-medium leading-tight">
+                      {t('delete_expense_confirm', { name: exp.description || getCategoryById(exp.category).id })}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      onDelete(exp.id);
+                    }}
+                    className="w-full p-4 text-[#FF3B30] text-[20px] font-medium active:bg-gray-100 transition-colors"
+                  >
+                    {t('delete')}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="w-full max-w-sm bg-white p-4 text-[#007AFF] text-[20px] font-bold rounded-2xl shadow-lg active:bg-gray-100 transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Calendar } from 'lucide-react';
+import { Check, Calendar, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Member, Expense, SplitType, SplitDetail } from '../types';
@@ -13,6 +13,7 @@ interface CreateExpenseModalProps {
   onClose: () => void;
   members: Member[];
   onSave: (expense: Expense) => void;
+  onDelete?: (id: string) => Promise<void> | void;
   initialExpense?: Expense;
   groupCurrency?: string;
 }
@@ -43,7 +44,7 @@ function buildIsoFromDateInput(dateStr: string, originalIso?: string): string {
   return local.toISOString();
 }
 
-export default function CreateExpenseModal({ isOpen, onClose, members, onSave, initialExpense, groupCurrency }: CreateExpenseModalProps) {
+export default function CreateExpenseModal({ isOpen, onClose, members, onSave, onDelete, initialExpense, groupCurrency }: CreateExpenseModalProps) {
   const { t, i18n } = useTranslation();
   const [totalAmount, setTotalAmount] = useState<string>('');
   const [description, setDescription] = useState('');
@@ -57,6 +58,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
   const [expenseCurrency, setExpenseCurrency] = useState('TWD');
   const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const amountRef = React.useRef<HTMLInputElement>(null);
 
@@ -68,6 +70,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
 
   useEffect(() => {
     if (isOpen) {
+      setConfirmingDelete(false);
       if (initialExpense) {
         const cur = initialExpense.originalCurrency || groupCurrency || 'TWD';
         setExpenseCurrency(cur);
@@ -287,6 +290,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
               <div className="ios-card flex flex-col">
                 <input
                   type="text"
+                  maxLength={200}
                   placeholder={t('expense_item_placeholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -307,6 +311,7 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                   />
                 </div>
                 <textarea
+                  maxLength={500}
                   placeholder={t('notes_placeholder')}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -425,6 +430,29 @@ export default function CreateExpenseModal({ isOpen, onClose, members, onSave, i
                 })}
               </div>
             </div>
+          )}
+
+          {initialExpense && onDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirmingDelete) {
+                  setConfirmingDelete(true);
+                  return;
+                }
+                onDelete(initialExpense.id);
+                onClose();
+              }}
+              className={cn(
+                "w-full h-12 rounded-2xl font-bold text-[15px] flex items-center justify-center gap-2 transition-all active:scale-95",
+                confirmingDelete
+                  ? "bg-red-500 text-white shadow-md shadow-red-500/20"
+                  : "bg-red-50 text-red-600 border border-red-100"
+              )}
+            >
+              <Trash2 size={18} strokeWidth={2.5} />
+              <span>{confirmingDelete ? t('confirm_delete_expense') : t('delete_expense')}</span>
+            </button>
           )}
 
           <div className="h-4" />

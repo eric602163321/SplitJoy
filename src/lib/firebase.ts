@@ -3,7 +3,7 @@ import { getAuth } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentSingleTabManager,
+  persistentMultipleTabManager,
   doc,
   getDocFromServer
 } from 'firebase/firestore';
@@ -12,13 +12,13 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Initialize Firestore with modern persistent cache and optional named databaseId
+// Initialize Firestore with multi-tab persistent cache and optional named databaseId
 const databaseId = (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId;
 export const db = initializeFirestore(
   app,
   {
     localCache: persistentLocalCache({
-      tabManager: persistentSingleTabManager({})
+      tabManager: persistentMultipleTabManager()
     })
   },
   databaseId
